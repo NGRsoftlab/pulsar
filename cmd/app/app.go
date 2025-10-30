@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nashabanov/ueba-event-generator/internal/config"
 	"github.com/nashabanov/ueba-event-generator/internal/logger"
@@ -37,13 +38,22 @@ func (app *Application) Run() error {
 	app.cancel = cancel
 	defer cancel()
 
+	app.SetupSignalHandling(cancel)
+
 	if app.config.Generator.Duration > 0 {
 		app.logger.Info("Application will run for: %v", app.config.Generator.Duration)
-		ctx, cancel = context.WithTimeout(ctx, app.config.Generator.Duration)
-		defer cancel()
-	}
 
-	app.SetupSignalHandling(cancel)
+		go func() {
+			timer := time.NewTimer(app.config.Generator.Duration)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+				app.logger.Info("Generator duration reached, initiating shutdown...")
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
 
 	// Канал для ошибок пайплайна
 	errCh := make(chan error, 1)
@@ -65,6 +75,7 @@ func (app *Application) Run() error {
 	select {
 	case <-ctx.Done():
 		// если просто таймаут или сигнал
+		app.logger.Info("Context canceled: %v", ctx.Err())
 	case err := <-errCh:
 		// если пайплайн вернул ошибку
 		runErr = err

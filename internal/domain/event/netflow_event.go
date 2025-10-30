@@ -1,38 +1,32 @@
 package event
 
 import (
-	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/netip"
 	"time"
+
+	"github.com/nashabanov/ueba-event-generator/internal/domain/netflow"
 )
 
-// NetflowEvent представляет Netflow v5 событие
+// NetflowEvent представляет Netflow v5 событие с поддержкой бинарной сериализации
 type NetflowEvent struct {
-	// Основные поля события
-	ID             string    `json:"-"` // Внутренний ID
-	EventTimestamp time.Time `json:"event_time"`
-	LogTimestamp   time.Time `json:"logtime"`
+	ID             string
+	EventTimestamp time.Time
+	LogTimestamp   time.Time
 
-	// Netflow специфичные поля
-	InBytes         uint64     `json:"netflow_in_bytes"`      // Байты входящие
-	InPackets       uint32     `json:"netflow_in_pkts"`       // Пакеты входящие
-	SourceAddr      netip.Addr `json:"netflow_ipv4_src_addr"` // IP источника
-	DestinationAddr netip.Addr `json:"netflow_ipv4_dst_addr"` // IP назначения
-	SourcePort      uint16     `json:"netflow_l4_src_port"`   // Порт источника
-	DestinationPort uint16     `json:"netflow_l4_dst_port"`   // Порт назначения
-	Protocol        string     `json:"netflow_protocol"`      // TCP/UDP/ICMP
-	TCPFlags        string     `json:"netflow_tcp_flags"`     // TCP флаги
+	InBytes         uint64
+	InPackets       uint32
+	SourceAddr      netip.Addr
+	DestinationAddr netip.Addr
+	SourcePort      uint16
+	DestinationPort uint16
+	Protocol        string
+	TCPFlags        string
 
-	// Host информация
-	HostIP        netip.Addr `json:"host_ip"`
-	HostIPListStr string     `json:"host_ip_list_str"`
-
-	// Observer информация
-	ObserverType string `json:"observer_type"` // "netflow"
-
-	// Кэшированный размер для производительности
-	cachedSize int
+	HostIP        netip.Addr
+	HostIPListStr string
+	ObserverType  string
 }
 
 func NewNetflowEvent() *NetflowEvent {
@@ -42,97 +36,95 @@ func NewNetflowEvent() *NetflowEvent {
 		EventTimestamp: now,
 		LogTimestamp:   now,
 		ObserverType:   "netflow",
-		cachedSize:     -1,
 	}
 }
 
-// Type возвращает тип события
 func (e NetflowEvent) Type() EventType {
 	return EventTypeNetflow
 }
 
-// Timestamp возвращает временную метку события
 func (e NetflowEvent) Timestamp() time.Time {
 	return e.EventTimestamp
 }
 
-// ID возвращает ID события
 func (e NetflowEvent) GetID() string {
 	return e.ID
 }
 
-// GetSourceIP возвращает IP-адрес источника
 func (e NetflowEvent) GetSourceIP() netip.Addr {
 	return e.SourceAddr
 }
 
-// GetDestinationIP возвращает IP-адрес назначения
 func (e NetflowEvent) GetDestinationIP() netip.Addr {
 	return e.DestinationAddr
 }
 
-// ToJSON преобразует событие в JSON
-func (e NetflowEvent) ToJSON() ([]byte, error) {
-	data := map[string]interface{}{
-		"netflow_in_bytes":      e.InBytes,
-		"netflow_in_pkts":       e.InPackets,
-		"netflow_ipv4_src_addr": e.SourceAddr.String(),
-		"netflow_ipv4_dst_addr": e.DestinationAddr.String(),
-		"netflow_l4_src_port":   e.SourcePort,
-		"netflow_l4_dst_port":   e.DestinationPort,
-		"netflow_protocol":      e.Protocol,
-		"netflow_tcp_flags":     e.TCPFlags,
-		"logtime":               e.LogTimestamp.Format(time.RFC3339Nano),
-		"host_ip":               e.HostIP.String(),
-		"host_ip_list_str":      e.HostIPListStr,
-		"event_time":            e.EventTimestamp.Format(time.RFC3339Nano),
-		"observer_type":         e.ObserverType,
+// ToBinaryNetFlow создает бинарный NetFlow v5 пакет из события
+func (e NetflowEvent) ToBinaryNetFlow() ([]byte, error) {
+	protocolNum := netflow.ProtocolFromString(e.Protocol)
+
+	var tcpFlags uint8
+	if e.Protocol == "tcp" && e.TCPFlags != "" {
+		tcpFlags = 0x18 // Пример TCP флагов PSH+ACK
 	}
-	return json.Marshal(data)
+
+	record := netflow.NewNetFlowV5Record(
+		e.SourceAddr,
+		e.DestinationAddr,
+		e.SourcePort,
+		e.DestinationPort,
+		protocolNum,
+		uint32(e.InBytes),
+		e.InPackets,
+		tcpFlags,
+	)
+
+	packet, err := netflow.NewNetFlowV5Packet([]*netflow.NetFlowV5Record{record})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create NetFlow packet: %w", err)
+	}
+
+	if err := packet.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid NetFlow packet: %w", err)
+	}
+
+	return packet.ToBytes()
 }
 
-// Size возвращает размер события в байтах
+// Size возвращает размер события — теперь привязан к бинарному представлению
 func (e NetflowEvent) Size() int {
-	if e.cachedSize == -1 {
-		jsonData, _ := e.ToJSON()
-		e.cachedSize = len(jsonData)
-	}
-	return e.cachedSize
+	return e.BinarySize()
 }
 
-// Validate проверяет корректность Netflow события
+func (e NetflowEvent) BinarySize() int {
+	// Стандартный размер NetFlow v5 пакета с одной записью - 72 байта
+	return 72
+}
+
 func (e NetflowEvent) Validate() error {
 	if e.ID == "" {
 		return fmt.Errorf("id is required")
 	}
-
 	if e.EventTimestamp.IsZero() {
 		return fmt.Errorf("event_time is required")
 	}
-
 	if !e.SourceAddr.IsValid() {
 		return fmt.Errorf("source address is invalid: %v", e.SourceAddr)
 	}
-
 	if !e.DestinationAddr.IsValid() {
 		return fmt.Errorf("destination address is invalid: %v", e.DestinationAddr)
 	}
-
 	if e.Protocol == "" {
 		return fmt.Errorf("protocol is required")
 	}
-
 	if e.ObserverType != "netflow" {
 		return fmt.Errorf("observer type must be 'netflow', got: %v", e.ObserverType)
 	}
-
 	return nil
 }
 
-// SetTrafficData устанавливает данные трафика
 func (e *NetflowEvent) SetTrafficData(srcIP, destIP string, srcPort, dstPort uint16, protocol string) error {
 	var err error
-
 	e.SourceAddr, err = netip.ParseAddr(srcIP)
 	if err != nil {
 		return fmt.Errorf("invalid source IP address: %v", err)
@@ -149,17 +141,74 @@ func (e *NetflowEvent) SetTrafficData(srcIP, destIP string, srcPort, dstPort uin
 	e.HostIP = e.SourceAddr
 	e.HostIPListStr = e.SourceAddr.String()
 
-	// Сбросить кэш размера
-	e.cachedSize = -1
-
 	return nil
 }
 
-// SetBytesAndPackets устанавливает статистику трафика
 func (e *NetflowEvent) SetBytesAndPackets(bytes uint64, packets uint32) {
 	e.InBytes = bytes
 	e.InPackets = packets
+}
 
-	// Сбросить кэш размера
-	e.cachedSize = -1
+// GenerateRandomTrafficData заполняет событие случайными реалистичными данными
+func (e *NetflowEvent) GenerateRandomTrafficData() error {
+	srcIPs := []string{
+		"192.168.1.10", "192.168.1.15", "192.168.1.20",
+		"10.0.1.100", "10.0.1.101", "10.0.2.50",
+		"172.16.0.10", "172.16.0.20",
+	}
+
+	dstIPs := []string{
+		"8.8.8.8", "1.1.1.1", "208.67.222.222",
+		"192.168.1.1", "10.0.1.1",
+		"93.184.216.34", "151.101.193.140",
+	}
+
+	protocols := []string{"tcp", "udp"}
+
+	tcpPorts := []uint16{80, 443, 22, 21, 25, 53, 993, 995, 8080, 8443}
+	udpPorts := []uint16{53, 123, 161, 514, 1194, 4500}
+
+	protocol := protocols[rand.Intn(len(protocols))]
+	srcIP := srcIPs[rand.Intn(len(srcIPs))]
+	dstIP := dstIPs[rand.Intn(len(dstIPs))]
+
+	var srcPort, dstPort uint16
+	if protocol == "tcp" {
+		srcPort = 1024 + uint16(rand.Intn(64511))
+		dstPort = tcpPorts[rand.Intn(len(tcpPorts))]
+	} else {
+		srcPort = 1024 + uint16(rand.Intn(64511))
+		dstPort = udpPorts[rand.Intn(len(udpPorts))]
+	}
+
+	if err := e.SetTrafficData(srcIP, dstIP, srcPort, dstPort, protocol); err != nil {
+		return err
+	}
+
+	var bytes uint64
+	var packets uint32
+
+	switch dstPort {
+	case 80, 443:
+		packets = uint32(10 + rand.Intn(100))
+		bytes = uint64(packets) * (500 + uint64(rand.Intn(2000)))
+	case 53:
+		packets = uint32(1 + rand.Intn(5))
+		bytes = uint64(packets) * (50 + uint64(rand.Intn(200)))
+	case 22:
+		packets = uint32(5 + rand.Intn(50))
+		bytes = uint64(packets) * (100 + uint64(rand.Intn(500)))
+	default:
+		packets = uint32(1 + rand.Intn(20))
+		bytes = uint64(packets) * (64 + uint64(rand.Intn(1000)))
+	}
+
+	e.SetBytesAndPackets(bytes, packets)
+
+	if protocol == "tcp" {
+		tcpFlagsOptions := []string{"", ".A", ".AP", ".S", ".SA", ".F", ".R"}
+		e.TCPFlags = tcpFlagsOptions[rand.Intn(len(tcpFlagsOptions))]
+	}
+
+	return nil
 }

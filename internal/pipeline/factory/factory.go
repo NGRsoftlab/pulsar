@@ -10,48 +10,51 @@ import (
 	"github.com/nashabanov/ueba-event-generator/internal/pipeline/stages"
 )
 
-// PipelineFactory отвечает за создание и конфигурацию pipeline
 type PipelineFactory struct {
 	cfg *config.Config
 }
 
-// NewPipelineFactory конструктор фабрики
 func NewPipelineFactory(cfg *config.Config) *PipelineFactory {
 	return &PipelineFactory{cfg: cfg}
 }
 
-// CreatePipeline создает pipeline с настроенными стадиями
 func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
-	pipeline := coordinator.NewPipeline(f.cfg.Pipeline.BufferSize)
+	// Буфер теперь напрямую соответствует нагрузке
+	bufferSize := f.cfg.Pipeline.BufferSize
 
-	genStage, err := f.createGenerationStage()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create generation stage: %w", err)
+	// Рекомендуемая логика: если 0, вычисляем автоматически
+	if bufferSize == 0 {
+		bufferSize = f.cfg.Generator.EventsPerSecond * 3
+		if bufferSize < 1000 {
+			bufferSize = 1000
+		}
+		if bufferSize > 200000 {
+			bufferSize = 200000
+		}
 	}
 
-	sendStage, err := f.createSendingStage()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create sending stage: %w", err)
-	}
+	pipeline := coordinator.NewPipeline(bufferSize)
 
-	genAdapter := stages.NewGenerationAdapter(genStage, f.cfg.Pipeline.BufferSize)
-	sendAdapter := stages.NewSendingAdapter(sendStage, f.cfg.Pipeline.BufferSize)
+	genStage, _ := f.createGenerationStage()
+	sendStage, _ := f.createSendingStage()
 
-	if err := pipeline.AddStage(genAdapter); err != nil {
+	// Добавляем напрямую — без адаптеров!
+	if err := pipeline.AddStage(genStage); err != nil {
 		return nil, fmt.Errorf("failed to add generation stage: %w", err)
 	}
 
-	if err := pipeline.AddStage(sendAdapter); err != nil {
+	if err := pipeline.AddStage(sendStage); err != nil {
 		return nil, fmt.Errorf("failed to add sending stage: %w", err)
 	}
 
 	return pipeline, nil
 }
 
-func (f *PipelineFactory) createGenerationStage() (stages.GenerationStage, error) {
+func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 	genStage := stages.NewEventGenerationStage(
 		f.cfg.Generator.Name,
 		f.cfg.Generator.EventsPerSecond,
+		f.cfg, // оставляем cfg, как в твоём оригинальном коде
 	)
 
 	eventTypes, err := f.ParseEventTypes()
@@ -66,7 +69,7 @@ func (f *PipelineFactory) createGenerationStage() (stages.GenerationStage, error
 	return genStage, nil
 }
 
-func (f *PipelineFactory) createSendingStage() (stages.SendingStage, error) {
+func (f *PipelineFactory) createSendingStage() (coordinator.Stage, error) {
 	sendStage := stages.NewNetworkSendingStage(f.cfg.Sender.Name)
 
 	if err := sendStage.SetDestinations(f.cfg.Sender.Destinations); err != nil {
@@ -88,7 +91,8 @@ func (f *PipelineFactory) ParseEventTypes() ([]event.EventType, error) {
 		case "netflow":
 			eventTypes[i] = event.EventTypeNetflow
 		case "syslog":
-			eventTypes[i] = event.EventTypeSyslog
+			// syslog пока не поддерживается
+			return nil, fmt.Errorf("syslog events are not supported yet")
 		default:
 			return nil, fmt.Errorf("unsupported event type: %s", typeStr)
 		}

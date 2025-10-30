@@ -13,17 +13,6 @@ import (
 	"github.com/nashabanov/ueba-event-generator/internal/workers"
 )
 
-// NetworkSendJob - задача для отправки через Worker Pool
-type NetworkSendJob struct {
-	stage *NetworkSendingStage
-	data  *SerializedData
-}
-
-// Execute реализует интерфейс workers.Job
-func (job *NetworkSendJob) Execute() error {
-	return job.stage.SendData(job.data)
-}
-
 // NetworkSendingStage реализует SendingStage для отправки по сети
 type NetworkSendingStage struct {
 	name         string
@@ -33,12 +22,17 @@ type NetworkSendingStage struct {
 
 	tcpPool    *network.TCPConnectionPool
 	workerPool *workers.WorkerPool
+	udpConn    net.Conn
 	metrics    *metrics.PerformanceMetrics
 	input      chan event.Event
 }
 
 func NewNetworkSendingStage(name string) *NetworkSendingStage {
-	workerPool := workers.NewWorkerPool(0, 5000)
+	workerPool := workers.NewWorkerPool(0, 5000, func() workers.JobBatch {
+		return &NetworkSendJobBatch{
+			data: make([]*SerializedData, 0, 50), // предварительная ёмкость
+		}
+	})
 	workerPool.SetPoolType("network")
 	return &NetworkSendingStage{
 		name:         name,
@@ -48,7 +42,6 @@ func NewNetworkSendingStage(name string) *NetworkSendingStage {
 		workerPool:   workerPool,
 		metrics:      metrics.NewPerformanceMetrics(),
 		input:        make(chan event.Event, 1000),
-		// tcpPool будет создан в Run() когда узнаем точный протокол
 	}
 }
 
@@ -56,47 +49,121 @@ func (s *NetworkSendingStage) Name() string {
 	return s.name
 }
 
-func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData) error {
+type NetworkSendJobBatch struct {
+	stage *NetworkSendingStage
+	data  []*SerializedData
+}
+
+func (jb *NetworkSendJobBatch) ExecuteBatch() error {
+	if jb == nil {
+		log.Printf("❌ CRITICAL: NetworkSendJobBatch is nil!")
+		return fmt.Errorf("job batch is nil")
+	}
+
+	for _, d := range jb.data {
+		if err := jb.stage.SendData(d); err != nil {
+			// Логируем ошибку (опционально — можно сделать через debug-флаг)
+			// log.Printf("Failed to send event %s: %v", d.ID, err)
+
+			// Ошибки уже учитываются внутри SendData(),
+			// поэтому здесь ничего дополнительно делать не нужно
+		}
+	}
+
+	// Важно: очищаем слайс, но сохраняем ёмкость для переиспользования
+	jb.data = jb.data[:0]
+
+	return nil
+}
+
+func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData, out chan<- *SerializedData, ready chan<- bool) error {
+	// Инициализация соединений
+	var err error
 	if s.protocol == "tcp" && len(s.destinations) > 0 {
 		poolSize := 12
-
-		tcpPool, err := network.NewTCPConnectionPool(s.destinations[0], poolSize)
+		s.tcpPool, err = network.NewTCPConnectionPool(s.destinations[0], poolSize)
 		if err != nil {
 			return fmt.Errorf("failed to create TCP connection pool: %w", err)
 		}
-		s.tcpPool = tcpPool
-
 		log.Printf("✅ TCP connection pool created: %d connections to %s", poolSize, s.destinations[0])
+	} else if s.protocol == "udp" && len(s.destinations) > 0 {
+		s.udpConn, err = net.Dial("udp", s.destinations[0])
+		if err != nil {
+			return fmt.Errorf("failed to create UDP socket to %s: %w", s.destinations[0], err)
+		}
+		s.udpConn.SetWriteDeadline(time.Now().Add(s.timeout))
+		log.Printf("✅ UDP socket created to %s", s.destinations[0])
 	}
 
+	// Запускаем worker pool
 	s.workerPool.Start(ctx)
+
+	// 🔥 Сигнализируем готовность ДО начала обработки данных
+	if ready != nil {
+		close(ready)
+	}
+
 	defer s.workerPool.Stop()
 	defer s.closeConnections()
+
+	const batchSize = 50
+	const batchTimeout = 5 * time.Millisecond
+
+	var (
+		currentBatch *NetworkSendJobBatch
+		timer        *time.Timer
+		timerC       <-chan time.Time
+	)
 
 	for {
 		select {
 		case serializedData, ok := <-in:
 			if !ok {
-				_, sent, failed, _ := metrics.GetGlobalMetrics().GetStats()
-				fmt.Printf("Sending stage '%s' stopped. Sent: %d, Failed: %d\n",
-					s.name, sent, failed)
+				// Канал закрыт — завершаем
+				if currentBatch != nil && len(currentBatch.data) > 0 {
+					s.workerPool.Submit(currentBatch)
+				}
+				// Статистика...
 				return nil
 			}
 
-			job := &NetworkSendJob{
-				stage: s,
-				data:  serializedData,
+			if currentBatch == nil {
+				currentBatch = s.workerPool.GetJob().(*NetworkSendJobBatch)
+				currentBatch.stage = s
+				currentBatch.data = currentBatch.data[:0]
+				timer = time.NewTimer(batchTimeout)
+				timerC = timer.C
 			}
 
-			if !s.workerPool.Submit(job) {
-				metrics.GetGlobalMetrics().IncrementDropped()
-				fmt.Printf("Network worker pool queue full, dropping send\n")
+			currentBatch.data = append(currentBatch.data, serializedData)
+
+			if len(currentBatch.data) >= batchSize {
+				if !s.workerPool.Submit(currentBatch) {
+					metrics.GetGlobalMetrics().IncrementDropped()
+				}
+				currentBatch = nil
+				if timer != nil {
+					timer.Stop()
+					timer = nil
+					timerC = nil
+				}
 			}
+
+		case <-timerC:
+			if currentBatch != nil && len(currentBatch.data) > 0 {
+				if !s.workerPool.Submit(currentBatch) {
+					metrics.GetGlobalMetrics().IncrementDropped()
+				}
+				currentBatch = nil
+			}
+			timer = nil
+			timerC = nil
 
 		case <-ctx.Done():
-			_, sent, failed, _ := metrics.GetGlobalMetrics().GetStats()
-			fmt.Printf("Sending stage '%s' cancelled. Sent: %d, Failed: %d\n",
-				s.name, sent, failed)
+			if currentBatch != nil && len(currentBatch.data) > 0 {
+				s.workerPool.Submit(currentBatch)
+			}
+			// Статистика...
 			return ctx.Err()
 		}
 	}
@@ -137,23 +204,18 @@ func (s *NetworkSendingStage) SendData(data *SerializedData) error {
 
 // sendUDP отправляет данные через UDP (stateless) - без изменений
 func (s *NetworkSendingStage) sendUDP(destination string, data []byte) error {
-	globalMetrics := metrics.GetGlobalMetrics()
-
-	conn, err := net.Dial("udp", destination)
-	if err != nil {
-		globalMetrics.IncrementTimeouts()
-		return fmt.Errorf("failed to dial UDP %s: %w", destination, err)
+	if s.udpConn == nil {
+		return fmt.Errorf("UDP socket not initialized")
 	}
-	defer func() {
-		conn.Close()
-		globalMetrics.DecrementConnections()
-	}()
 
-	globalMetrics.IncrementConnections()
+	globalMetrics := metrics.GetGlobalMetrics()
+	globalMetrics.IncrementConnections() // можно оставить для совместимости метрик
+	defer globalMetrics.DecrementConnections()
 
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	// Обновляем таймаут на каждый вызов (на случай долгой работы)
+	s.udpConn.SetWriteDeadline(time.Now().Add(s.timeout))
 
-	_, err = conn.Write(data)
+	_, err := s.udpConn.Write(data)
 	if err != nil {
 		globalMetrics.IncrementTimeouts()
 		return fmt.Errorf("failed to write UDP data to %s: %w", destination, err)
@@ -196,6 +258,12 @@ func (s *NetworkSendingStage) closeConnections() {
 		s.tcpPool.Close()
 		log.Printf("TCP connection pool closed")
 		s.tcpPool = nil
+	}
+
+	if s.udpConn != nil {
+		s.udpConn.Close()
+		log.Printf("UDP socket closed")
+		s.udpConn = nil
 	}
 }
 

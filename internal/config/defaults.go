@@ -24,7 +24,7 @@ func DefaultConfig() *Config {
 			Timeout:      5 * time.Second,
 		},
 		Pipeline: PipelineConfig{
-			BufferSize:  100,
+			BufferSize:  10000,
 			WorkerCount: 1,
 		},
 		Logging: LoggingConfig{

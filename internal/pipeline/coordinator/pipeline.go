@@ -5,26 +5,27 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
+	"github.com/nashabanov/ueba-event-generator/internal/pipeline/stages"
 )
 
 // Pipeline - интерфейс для пайплайна
 type Pipeline interface {
-	// Lifecicle - жизненный цикл
+	// Lifecycle - жизненный цикл
 	Start(ctx context.Context) error
 	Stop() error
 
 	// Configuration - настройка
 	AddStage(stage Stage) error
 
-	// Мonitoring - мониторинг
+	// Monitoring - мониторинг
 	GetStatus() PipelineStatus
 }
 
 // Stage - интерфейс для этапа пайплайна
 type Stage interface {
 	Name() string
-	Run(ctx context.Context, in <-chan event.Event, out chan<- event.Event) error
+	// Добавляем канал ready для сигнала готовности
+	Run(ctx context.Context, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool) error
 }
 
 type PipelineStatus int
@@ -43,12 +44,12 @@ type pipelineImpl struct {
 	status PipelineStatus
 	mu     sync.RWMutex // защищает изменения статуса
 
-	stages   []Stage            // список этапов
-	channels []chan event.Event // канал между стадиями
+	stages   []Stage                       // список этапов
+	channels []chan *stages.SerializedData // канал между стадиями
 
 	// Входной и выходной каналы
-	inputChan  chan event.Event
-	outputChan chan event.Event
+	inputChan  chan *stages.SerializedData
+	outputChan chan *stages.SerializedData
 
 	// Управление жизненным циклом
 	ctx    context.Context
@@ -62,20 +63,18 @@ type pipelineImpl struct {
 // NewPipeline создает новый экземпляр пайплайна
 func NewPipeline(bufferSize int) Pipeline {
 	return &pipelineImpl{
-		status:   Stopped,
-		stages:   make([]Stage, 0),
-		channels: make([]chan event.Event, 0),
-
-		inputChan:  make(chan event.Event, bufferSize),
-		outputChan: make(chan event.Event, bufferSize),
-
+		status:     Stopped,
+		stages:     make([]Stage, 0),
+		channels:   make([]chan *stages.SerializedData, 0),
+		inputChan:  make(chan *stages.SerializedData, bufferSize),
+		outputChan: make(chan *stages.SerializedData, bufferSize),
 		bufferSize: bufferSize,
 	}
 }
 
 // GetStatus возвращает текущий статус пайплайна
 func (p *pipelineImpl) GetStatus() PipelineStatus {
-	p.mu.RLock() // Читаем - используем RLock
+	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.status
 }
@@ -90,15 +89,13 @@ func (p *pipelineImpl) Start(ctx context.Context) error {
 	}
 
 	p.status = Starting
-
 	p.ctx, p.cancel = context.WithCancel(ctx)
 
 	p.createChannels()
-
 	p.startStages()
 
 	p.status = Running
-	fmt.Printf("Pipeline started with %d stages\n", len(p.stages))
+	fmt.Printf("✅ Pipeline started with %d stages\n", len(p.stages))
 	return nil
 }
 
@@ -109,27 +106,26 @@ func (p *pipelineImpl) Stop() error {
 		p.mu.Unlock()
 		return fmt.Errorf("cannot stop, pipeline status: %v", p.status)
 	}
-
 	p.status = Stopping
 	p.mu.Unlock()
 
-	fmt.Printf("Stopping pipeline...\n")
+	fmt.Printf("⏹️  Stopping pipeline...\n")
 
 	if p.cancel != nil {
 		p.cancel()
 	}
 
+	// Закрываем входной канал — это сигнал первой стадии о завершении
 	close(p.inputChan)
 
 	p.wg.Wait()
-
 	p.closeChannels()
 
 	p.mu.Lock()
 	p.status = Stopped
 	p.mu.Unlock()
 
-	fmt.Printf("Pipeline stopped successfully\n")
+	fmt.Printf("⏹️  Pipeline stopped successfully\n")
 	return nil
 }
 
@@ -149,48 +145,58 @@ func (p *pipelineImpl) AddStage(stage Stage) error {
 // createChannels создает каналы для передачи данных между этапами
 func (p *pipelineImpl) createChannels() {
 	stageCount := len(p.stages)
-
-	if stageCount == 0 {
+	if stageCount <= 1 {
+		p.channels = nil
 		return
 	}
 
-	if stageCount == 1 {
-		p.channels = make([]chan event.Event, 0)
-		return
-	}
-
-	p.channels = make([]chan event.Event, stageCount-1)
+	p.channels = make([]chan *stages.SerializedData, stageCount-1)
 	for i := 0; i < stageCount-1; i++ {
-		p.channels[i] = make(chan event.Event, p.bufferSize)
-		fmt.Printf("Created intermediate channel %d with buffer size %d\n", i, p.bufferSize)
+		p.channels[i] = make(chan *stages.SerializedData, p.bufferSize)
+		fmt.Printf("🔗 Created intermediate channel %d with buffer size %d\n", i, p.bufferSize)
 	}
 }
 
-// startStage запускает все этапы пайплайна
+// startStages запускает все этапы пайплайна
 func (p *pipelineImpl) startStages() {
+	// Создаём каналы готовности для каждой стадии
+	readyChans := make([]chan bool, len(p.stages))
+	for i := range readyChans {
+		readyChans[i] = make(chan bool, 1) // буферизованный, чтобы не блокировать
+	}
+
+	// Запускаем все стадии параллельно
 	for i, stage := range p.stages {
 		inputChan := p.getInputChannel(i)
 		outputChan := p.getOutputChannel(i)
+		readyChan := readyChans[i]
 
 		p.wg.Add(1)
 
-		go func(s Stage, in <-chan event.Event, out chan<- event.Event, index int) {
+		go func(s Stage, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool, index int) {
 			defer p.wg.Done()
 
-			fmt.Printf("Stage '%s' started\n", s.Name())
+			fmt.Printf("▶️  Stage '%s' started\n", s.Name())
 
-			err := s.Run(p.ctx, in, out)
-			if err != nil {
+			err := s.Run(p.ctx, in, out, ready)
+			if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
 				fmt.Printf("Stage '%s' finished with error: %v\n", s.Name(), err)
 			} else {
 				fmt.Printf("Stage '%s' finished successfully\n", s.Name())
 			}
-		}(stage, inputChan, outputChan, i)
+		}(stage, inputChan, outputChan, readyChan, i)
 	}
+
+	fmt.Printf("Waiting for all %d stages to initialize...\n", len(p.stages))
+	for i, ready := range readyChans {
+		<-ready
+		fmt.Printf("✅ Stage '%s' is ready\n", p.stages[i].Name())
+	}
+	fmt.Printf("All stages ready! Pipeline is running.\n")
 }
 
 // getInputChannel возвращает входной канал для указанной стадии
-func (p *pipelineImpl) getInputChannel(stageIndex int) <-chan event.Event {
+func (p *pipelineImpl) getInputChannel(stageIndex int) <-chan *stages.SerializedData {
 	if stageIndex == 0 {
 		return p.inputChan // Первая стадия читает из входа
 	}
@@ -198,7 +204,7 @@ func (p *pipelineImpl) getInputChannel(stageIndex int) <-chan event.Event {
 }
 
 // getOutputChannel возвращает выходной канал для указанной стадии
-func (p *pipelineImpl) getOutputChannel(stageIndex int) chan<- event.Event {
+func (p *pipelineImpl) getOutputChannel(stageIndex int) chan<- *stages.SerializedData {
 	if stageIndex == len(p.stages)-1 {
 		return p.outputChan // Последняя пишет в выход
 	}
@@ -210,6 +216,8 @@ func (p *pipelineImpl) closeChannels() {
 	for _, ch := range p.channels {
 		close(ch)
 	}
-	close(p.outputChan)
-	fmt.Printf("Closed output channel\n")
+	if p.outputChan != nil {
+		close(p.outputChan)
+	}
+	fmt.Printf("CloseOperation: Closed all pipeline channels\n")
 }

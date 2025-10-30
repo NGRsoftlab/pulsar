@@ -2,40 +2,113 @@ package workers
 
 import (
 	"context"
-	// "log"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nashabanov/ueba-event-generator/internal/metrics"
 )
 
-type Job interface {
-	Execute() error
+// JobBatch — интерфейс для пакетной обработки задач
+type JobBatch interface {
+	ExecuteBatch() error
 }
 
+// LockFreeQueue + event notification
+type LockFreeQueue struct {
+	buffer []JobBatch
+	size   uint64
+	head   uint64
+	tail   uint64
+	notify chan struct{} // сигнал для ожидания новых элементов
+}
+
+func NewLockFreeQueue(capacity int) *LockFreeQueue {
+	return &LockFreeQueue{
+		buffer: make([]JobBatch, capacity),
+		size:   uint64(capacity),
+		notify: make(chan struct{}, 1),
+	}
+}
+
+func (q *LockFreeQueue) TryPush(job JobBatch) bool {
+	if job == nil {
+		return false
+	}
+
+	tail := atomic.LoadUint64(&q.tail)
+	head := atomic.LoadUint64(&q.head)
+
+	if (tail+1)%q.size == head%q.size {
+		return false // full
+	}
+
+	q.buffer[tail%q.size] = job
+	atomic.StoreUint64(&q.tail, tail+1)
+
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+func (q *LockFreeQueue) TryPop() JobBatch {
+	head := atomic.LoadUint64(&q.head)
+	tail := atomic.LoadUint64(&q.tail)
+
+	if head%q.size == tail%q.size {
+		return nil // empty
+	}
+
+	job := q.buffer[head%q.size]
+	q.buffer[head%q.size] = nil
+	atomic.StoreUint64(&q.head, head+1)
+	return job
+}
+
+func (q *LockFreeQueue) WaitPop(ctx context.Context) JobBatch {
+	for {
+		job := q.TryPop()
+		if job != nil {
+			return job
+		}
+		select {
+		case <-q.notify:
+			continue
+		case <-ctx.Done():
+			return nil // Возвращает nil при отмене контекста
+		}
+	}
+}
+
+// WorkerPool
 type WorkerPool struct {
-	workerCount int            // Количество worker'ов
-	jobQueue    chan Job       // Очередь задач
-	quit        chan bool      // Сигнал для остановки
-	wg          sync.WaitGroup // Ожидание завершения всех worker'ов
-	poolType    string         // ✅ НОВОЕ ПОЛЕ для идентификации
+	workerCount int
+	queue       *LockFreeQueue
+	quit        chan struct{}
+	wg          sync.WaitGroup
+	poolType    string
+	newJobFunc  func() JobBatch
+	metricsChan chan func()
 }
 
-func NewWorkerPool(workerCount int, queueSize int) *WorkerPool {
-	// Автоматический расчет количества worker'ов
+// NewWorkerPool создаёт пул с пользовательской фабрикой задач
+func NewWorkerPool(workerCount, queueSize int, newJobFunc func() JobBatch) *WorkerPool {
 	if workerCount <= 0 {
-		// CPU-intensive: NumCPU
-		// I/O-intensive: NumCPU * 2-4
-		workerCount = runtime.NumCPU() * 3
+		workerCount = runtime.NumCPU() * 2
 	}
 
-	return &WorkerPool{
+	wp := &WorkerPool{
 		workerCount: workerCount,
-		jobQueue:    make(chan Job, queueSize), // Buffered channel
-		quit:        make(chan bool),
-		poolType:    "generic",
+		queue:       NewLockFreeQueue(queueSize),
+		quit:        make(chan struct{}),
+		newJobFunc:  newJobFunc,
+		metricsChan: make(chan func(), 1000),
 	}
+
+	return wp
 }
 
 func (wp *WorkerPool) SetPoolType(poolType string) {
@@ -43,71 +116,95 @@ func (wp *WorkerPool) SetPoolType(poolType string) {
 }
 
 func (wp *WorkerPool) Start(ctx context.Context) {
-	// Запускаем указанное количество worker'ов
+	wp.wg.Add(1)
+	go wp.metricsWorker(ctx)
+
 	for i := 0; i < wp.workerCount; i++ {
-		wp.wg.Add(1)         // Увеличиваем счетчик WaitGroup
-		go wp.worker(i, ctx) // Каждый worker в своей goroutine
+		wp.wg.Add(1)
+		go wp.worker(i, ctx)
 	}
 }
 
 func (wp *WorkerPool) worker(id int, ctx context.Context) {
 	defer wp.wg.Done()
-
 	globalMetrics := metrics.GetGlobalMetrics()
 	globalMetrics.IncrementActiveWorkers()
 	defer globalMetrics.DecrementActiveWorkers()
 
-	// log.Printf("🚀 Worker %d запущен", id)
-
-	// poolType := "unknown"
-	// if wp.poolType != "" {
-	// 	poolType = wp.poolType
-	// }
-
-	// log.Printf("🚀 Worker %s-%d запущен", poolType, id)
+	localCompleted := uint64(0)
 
 	for {
 		select {
-		case job := <-wp.jobQueue:
-			if job != nil {
-				startTime := time.Now()
-
-				if err := job.Execute(); err != nil {
-					// log.Printf("❌ Worker %d: ошибка задачи: %v", id, err)
-				} else {
-					globalMetrics.IncrementCompletedJobs()
-				}
-
-				processingTime := time.Since(startTime)
-				globalMetrics.RecordProcessingTime(processingTime)
+		case <-wp.quit:
+			return
+		default:
+			job := wp.queue.WaitPop(ctx)
+			// WaitPop возвращает nil при отмене контекста или пустой очереди
+			if job == nil {
+				return
 			}
 
-		case <-wp.quit:
-			// log.Printf("🛑 Worker %s-%d: останавливаюсь", poolType, id)
-			return
+			start := time.Now()
+			// ExecuteBatch может вернуть ошибку, но мы её игнорируем
+			_ = job.ExecuteBatch()
+			localCompleted++
 
-		case <-ctx.Done():
-			// log.Printf("⏱️ Worker %s-%d: context отменен", poolType, id)
-			return
+			if localCompleted%100 == 0 {
+				// Асинхронное обновление метрик
+				wp.metricsChan <- func() {
+					globalMetrics.IncrementCompletedJobs()
+					globalMetrics.RecordProcessingTime(time.Since(start))
+				}
+				localCompleted = 0
+			}
 		}
 	}
 }
 
-func (wp *WorkerPool) Submit(job Job) bool {
+func (wp *WorkerPool) Submit(job JobBatch) bool {
 	globalMetrics := metrics.GetGlobalMetrics()
 
-	select {
-	case wp.jobQueue <- job:
-		globalMetrics.SetQueuedJobs(uint64(len(wp.jobQueue)))
-		return true
-	default:
-		globalMetrics.IncrementRejectedJobs()
+	if job == nil {
+		wp.metricsChan <- func() {
+			globalMetrics.IncrementRejectedJobs()
+		}
 		return false
 	}
+
+	if wp.queue.TryPush(job) {
+		wp.metricsChan <- func() {
+			globalMetrics.SetQueuedJobs(atomic.LoadUint64(&wp.queue.tail) - atomic.LoadUint64(&wp.queue.head))
+		}
+		return true
+	}
+
+	wp.metricsChan <- func() {
+		globalMetrics.IncrementRejectedJobs()
+	}
+	return false
 }
 
 func (wp *WorkerPool) Stop() {
-	close(wp.quit)     // Закрываем channel - все worker'ы получат сигнал
-	wp.wg.Wait()       // Ждем пока все worker'ы завершатся
-	close(wp.jobQueue) // Закрываем очередь
+	close(wp.quit)
+	wp.wg.Wait()
+	close(wp.metricsChan)
+}
+
+func (wp *WorkerPool) GetJob() JobBatch {
+	return wp.newJobFunc()
+}
+
+func (wp *WorkerPool) metricsWorker(ctx context.Context) {
+	defer wp.wg.Done()
+	for {
+		select {
+		case f, ok := <-wp.metricsChan:
+			if !ok {
+				return
+			}
+			f()
+		case <-ctx.Done():
+			return
+		}
+	}
 }

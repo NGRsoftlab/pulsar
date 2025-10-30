@@ -35,9 +35,14 @@ type Event interface {
 	Size() int
 	Validate() error
 	GetID() string
-	ToJSON() ([]byte, error)
 	GetSourceIP() netip.Addr      // Источник трафика
 	GetDestinationIP() netip.Addr // Получатель трафика
+}
+
+type BinarySerializable interface {
+	Event
+	ToBinaryNetFlow() ([]byte, error) // возвращает бинарное NetFlow представление
+	BinarySize() int                  // размер бинарных данных
 }
 
 // generateEventID генерирует уникальный идентификатор события

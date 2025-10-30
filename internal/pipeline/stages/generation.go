@@ -3,63 +3,109 @@ package stages
 import (
 	"context"
 	"fmt"
-
-	// "runtime"
+	"log"
 	"time"
 
+	"github.com/nashabanov/ueba-event-generator/internal/config"
 	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
 	"github.com/nashabanov/ueba-event-generator/internal/metrics"
 	"github.com/nashabanov/ueba-event-generator/internal/workers"
+	"golang.org/x/time/rate"
 )
 
-// EventGenerationJob - задача для Worker Pool
-type EventGenerationJob struct {
-	stage *EventGenerationStage
-	out   chan<- *SerializedData
+// EventGenerationJobBatch - пакет событий для WorkerPool
+type EventGenerationJobBatch struct {
+	stage  *EventGenerationStage
+	out    chan<- *SerializedData
+	events []event.Event
 }
 
-// Execute реализует интерфейс workers.Job
-func (job *EventGenerationJob) Execute() error {
-	startTime := time.Now()
+// ExecuteBatch выполняет все события в батче
+func (jb *EventGenerationJobBatch) ExecuteBatch() error {
+	if jb == nil {
+		log.Printf("❌ CRITICAL: NetworkSendJobBatch is nil!")
+		return fmt.Errorf("job batch is nil")
+	}
 
-	err := job.stage.generateAndSendEvent(context.Background(), job.out)
+	for _, evt := range jb.events {
+		switch e := evt.(type) {
+		case *event.NetflowEvent:
+			var serializedData *SerializedData
+			var err error
 
-	processingTime := time.Since(startTime)
-	metrics.GetGlobalMetrics().RecordProcessingTime(processingTime)
+			if jb.stage.packetMode && jb.stage.serializationMode == SerializationModeBinary {
+				data, err := e.ToBinaryNetFlow()
+				if err != nil {
+					continue
+				}
+				serializedData = NewSerializedData(data, e.Type(), e.GetID(), jb.stage.serializationMode)
+			} else {
+				serializedData, err = NewSerializedDataFromEvent(e, jb.stage.serializationMode)
+				if err != nil {
+					continue
+				}
+			}
 
-	return err
+			select {
+			case jb.out <- serializedData:
+				metrics.GetGlobalMetrics().IncrementGenerated()
+			case <-context.Background().Done():
+				return context.Canceled
+			}
+
+		default:
+			// пропускаем неподдерживаемые события
+			continue
+		}
+	}
+
+	// очищаем батч для повторного использования
+	jb.events = jb.events[:0]
+	return nil
 }
 
-// EventGenerationStage реализует GenerationStage
+// EventGenerationStage генерирует события с высокой скоростью
 type EventGenerationStage struct {
 	name            string
 	eventTypes      []event.EventType
 	eventsPerSecond int
 
-	// НОВЫЕ ПОЛЯ для Worker Pool
+	serializationMode SerializationMode
+	packetMode        bool
+
 	workerPool *workers.WorkerPool
-	ticker     *time.Ticker
 }
 
-// NewEventGenerationStage создает новую стадию генерации
-func NewEventGenerationStage(name string, eventsPerSecond int) *EventGenerationStage {
+// NewEventGenerationStage создаёт стадию генерации
+func NewEventGenerationStage(name string, eventsPerSecond int, cfg *config.Config) *EventGenerationStage {
 	queueSize := eventsPerSecond * 2
 	if queueSize <= 1000 {
 		queueSize = 1000
 	}
 
-	// workerCount := runtime.NumCPU() * 3
-	workerPool := workers.NewWorkerPool(0, queueSize)
+	workerPool := workers.NewWorkerPool(0, queueSize, func() workers.JobBatch {
+		return &EventGenerationJobBatch{
+			events: make([]event.Event, 0, 50),
+		}
+	})
 	workerPool.SetPoolType("generation")
 
-	// fmt.Printf("🔧 Creating EventGenerationStage: EPS=%d, QueueSize=%d, Workers=%d\n",
-	// 	eventsPerSecond, queueSize, workerCount) //
+	serializationMode := SerializationModeBinary
+	packetMode := false
+	if cfg != nil {
+		if cfg.Generator.SerializationMode == "binary" {
+			serializationMode = SerializationModeBinary
+		}
+		packetMode = cfg.Generator.PacketMode
+	}
 
 	return &EventGenerationStage{
-		name:            name,
-		eventsPerSecond: eventsPerSecond,
-		eventTypes:      []event.EventType{event.EventTypeNetflow}, // Проверить что константа определена
-		workerPool:      workers.NewWorkerPool(0, queueSize),
+		name:              name,
+		eventsPerSecond:   eventsPerSecond,
+		eventTypes:        []event.EventType{event.EventTypeNetflow},
+		workerPool:        workerPool,
+		serializationMode: serializationMode,
+		packetMode:        packetMode,
 	}
 }
 
@@ -67,147 +113,103 @@ func (g *EventGenerationStage) Name() string {
 	return g.name
 }
 
-func (g *EventGenerationStage) Run(ctx context.Context, out chan<- *SerializedData) error {
-	measuredTickerEPS := 1160 // Проверенный предел системы
-	safetyMargin := 0.95      // 5% запас на вариативность
-
-	effectiveTickerEPS := int(float64(measuredTickerEPS) * safetyMargin) // 1102 EPS
-	batchSize := (g.eventsPerSecond + effectiveTickerEPS - 1) / effectiveTickerEPS
-
-	if g.eventsPerSecond >= 50000 && batchSize > 100 {
-		// Для очень высоких нагрузок используем более консервативный подход
-		effectiveTickerEPS = 1000
-		batchSize = g.eventsPerSecond / effectiveTickerEPS
-	}
-
-	interval := time.Second / time.Duration(effectiveTickerEPS)
-	expectedEPS := effectiveTickerEPS * batchSize
-	accuracy := float64(expectedEPS) / float64(g.eventsPerSecond) * 100
-
-	// fmt.Printf("🚀 Calibrated batch generation:\n")
-	// fmt.Printf("   Target EPS: %d\n", g.eventsPerSecond)
-	// fmt.Printf("   Measured system limit: %d EPS\n", measuredTickerEPS)
-	// fmt.Printf("   Effective ticker EPS: %d (with %.0f%% safety margin)\n",
-	// 	effectiveTickerEPS, (1-safetyMargin)*100)
-	// fmt.Printf("   Batch size: %d events per tick\n", batchSize)
-	// fmt.Printf("   Expected EPS: %d\n", expectedEPS)
-	// fmt.Printf("   Expected accuracy: %.1f%%\n", accuracy)
-
-	// Предупреждение если точность может быть низкой
-	if accuracy < 95.0 {
-		fmt.Printf("⚠️  Low accuracy warning: consider increasing batch size\n")
-	} else if accuracy > 105.0 {
-		fmt.Printf("⚠️  Over-target warning: batch size may be too large\n")
-	}
-
-	g.ticker = time.NewTicker(interval)
-	defer g.ticker.Stop()
+// Run запускает генерацию событий с batch + таймаут
+func (g *EventGenerationStage) Run(ctx context.Context, in <-chan *SerializedData, out chan<- *SerializedData, ready chan<- bool) error {
+	limiter := rate.NewLimiter(rate.Limit(g.eventsPerSecond), 100) // burst = 100
 
 	g.workerPool.Start(ctx)
+	if ready != nil {
+		close(ready)
+	}
 	defer g.workerPool.Stop()
 
-	globalMetrics := metrics.GetGlobalMetrics()
+	const batchSize = 50
+	const batchTimeout = 10 * time.Millisecond
 
-	// Счетчики для диагностики
-	tickCount := 0
-	totalJobsSubmitted := 0
-	totalJobsRejected := 0
-	startTime := time.Now()
+	var (
+		currentBatch *EventGenerationJobBatch
+		timer        *time.Timer
+		timerC       <-chan time.Time
+	)
 
 	for {
 		select {
-		case <-g.ticker.C:
-			tickCount++
-
-			// ГЕНЕРИРУЕМ BATCH СОБЫТИЙ за один тик
-			batchSubmitted := 0
-			batchRejected := 0
-
-			for i := 0; i < batchSize; i++ {
-				job := &EventGenerationJob{
-					stage: g,
-					out:   out,
-				}
-
-				if g.workerPool.Submit(job) {
-					batchSubmitted++
-					totalJobsSubmitted++
-				} else {
-					batchRejected++
-					totalJobsRejected++
-					globalMetrics.IncrementDropped()
-
-					// Если очередь полная, прерываем batch
-					if batchRejected > batchSize/2 {
-						break
-					}
-				}
-			}
-
-			// Диагностика каждые 1000 тиков (или если есть проблемы)
-			if tickCount%1000 == 0 || batchRejected > 0 {
-				elapsed := time.Since(startTime).Seconds()
-				actualTickRate := float64(tickCount) / elapsed
-				expectedEvents := tickCount * batchSize
-				actualEvents := totalJobsSubmitted
-
-				fmt.Printf("🔍 Tick %d: rate=%.1f/sec, batch=%d/%d, total_jobs=%d/%d (%.1f%% efficiency)\n",
-					tickCount, actualTickRate, batchSubmitted, batchSize,
-					actualEvents, expectedEvents, float64(actualEvents)/float64(expectedEvents)*100)
-			}
-
 		case <-ctx.Done():
-			// ✅ ФИНАЛЬНАЯ статистика
-			// elapsed := time.Since(startTime).Seconds()
-			// actualTickRate := float64(tickCount) / elapsed
-			// expectedEvents := tickCount * batchSize
-			// actualEPS := float64(totalJobsSubmitted) / elapsed
-
-			// fmt.Printf("🛑 Batch generation stopped:\n")
-			// fmt.Printf("   Runtime: %.1fs\n", elapsed)
-			// fmt.Printf("   Ticks: %d (rate: %.1f/sec)\n", tickCount, actualTickRate)
-			// fmt.Printf("   Jobs: submitted=%d, rejected=%d\n", totalJobsSubmitted, totalJobsRejected)
-			// fmt.Printf("   Expected events: %d, Actual EPS: %.1f\n", expectedEvents, actualEPS)
-			// fmt.Printf("   Efficiency: %.1f%%\n", float64(totalJobsSubmitted)/float64(expectedEvents)*100)
-
+			if currentBatch != nil && len(currentBatch.events) > 0 {
+				g.workerPool.Submit(currentBatch)
+			}
 			return ctx.Err()
+
+		default:
+			// Rate limiting
+			if err := limiter.Wait(ctx); err != nil {
+				return err
+			}
+
+			evt, err := g.generateEvent()
+			if err != nil {
+				continue
+			}
+
+			if currentBatch == nil {
+				currentBatch = &EventGenerationJobBatch{
+					stage:  g,
+					out:    out,
+					events: make([]event.Event, 0, batchSize),
+				}
+				timer = time.NewTimer(batchTimeout)
+				timerC = timer.C
+			}
+
+			currentBatch.events = append(currentBatch.events, evt)
+
+			if len(currentBatch.events) >= batchSize {
+				g.workerPool.Submit(currentBatch) // даже если dropped - не критично при низкой скорости
+				currentBatch = nil
+				if timer != nil {
+					timer.Stop()
+					timer = nil
+					timerC = nil
+				}
+			}
+
+			select {
+			case <-timerC:
+				if currentBatch != nil && len(currentBatch.events) > 0 {
+					g.workerPool.Submit(currentBatch)
+					currentBatch = nil
+				}
+				timer = nil
+				timerC = nil
+			default:
+			}
 		}
 	}
 }
 
-// generateAndSendEvent используем существующие функции из пакета event
-func (g *EventGenerationStage) generateAndSendEvent(ctx context.Context, out chan<- *SerializedData) error {
+// generateEvent создает одно событие Event
+func (g *EventGenerationStage) generateEvent() (event.Event, error) {
 	eventType := g.eventTypes[0]
 
-	var evt event.Event
 	switch eventType {
 	case event.EventTypeNetflow:
-		evt = event.NewNetflowEvent()
+		evt := event.NewNetflowEvent() // возвращает *NetflowEvent напрямую
+
+		if err := evt.GenerateRandomTrafficData(); err != nil {
+			return nil, fmt.Errorf("failed to generate random traffic data: %w", err)
+		}
+
+		return evt, nil
+
 	case event.EventTypeSyslog:
-		evt = event.NewSyslogEvent()
+		return nil, fmt.Errorf("syslog events are not supported yet")
+
 	default:
-		return fmt.Errorf("unsupported event type: %v", eventType)
-	}
-
-	jsonData, err := evt.ToJSON()
-	if err != nil {
-		return fmt.Errorf("failed to serialize event: %w", err)
-	}
-
-	serializedData := NewSerializedData(jsonData, evt.Type(), evt.GetID())
-
-	globalMetrics := metrics.GetGlobalMetrics()
-
-	select {
-	case out <- serializedData:
-		globalMetrics.IncrementGenerated()
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+		return nil, fmt.Errorf("unsupported event type: %v", eventType)
 	}
 }
 
-// Остальные методы без изменений...
+// Конфигурационные методы
 func (g *EventGenerationStage) SetEventRate(eventsPerSecond int) error {
 	if eventsPerSecond <= 0 {
 		return fmt.Errorf("events per second must be positive, got: %d", eventsPerSecond)

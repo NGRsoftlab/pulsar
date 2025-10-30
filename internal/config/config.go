@@ -12,11 +12,13 @@ type Config struct {
 }
 
 type GeneratorConfig struct {
-	Name            string        `yaml:"name" json:"name" env:"UEBA_GENERATOR_NAME"`
-	EventsPerSecond int           `yaml:"events_per_second" json:"events_per_second" env:"UEBA_EVENTS_PER_SEC"`
-	EventTypes      []string      `yaml:"event_types" json:"event_types" env:"UEBA_EVENT_TYPES"`
-	Duration        time.Duration `yaml:"duration" json:"duration" env:"UEBA_DURATION"`
-	EventConfig     EventConfig   `yaml:"event_config" json:"event_config"`
+	Name              string        `yaml:"name" json:"name" env:"UEBA_GENERATOR_NAME"`
+	EventsPerSecond   int           `yaml:"events_per_second" json:"events_per_second" env:"UEBA_EVENTS_PER_SEC"`
+	EventTypes        []string      `yaml:"event_types" json:"event_types" env:"UEBA_EVENT_TYPES"`
+	Duration          time.Duration `yaml:"duration" json:"duration" env:"UEBA_DURATION"`
+	EventConfig       EventConfig   `yaml:"event_config" json:"event_config"`
+	SerializationMode string        `yaml:"serialization_mode" json:"serialization_mode" env:"UEBA_SERIALIZATION_MODE"`
+	PacketMode        bool          `yaml:"packet_mode" json:"packet_mode" env:"UEBA_PACKET_MODE"`
 }
 
 type SenderConfig struct {
