@@ -1,5 +1,3 @@
-// coordinator/pipeline.go
-
 package coordinator
 
 import (
@@ -185,10 +183,6 @@ func (p *pipelineImpl) startStages() {
 				fmt.Printf("Stage '%s' finished with error: %v\n", s.Name(), err)
 			} else {
 				fmt.Printf("Stage '%s' finished successfully\n", s.Name())
-			}
-
-			if index == len(p.stages)-1 && out != nil {
-				close(out)
 			}
 		}(stage, inputChan, outputChan, readyChan, i)
 	}
