@@ -1,3 +1,4 @@
+// Package workers управляет очередью и пулом воркеров
 package workers
 
 import (
@@ -37,35 +38,53 @@ func (q *LockFreeQueue) TryPush(job JobBatch) bool {
 		return false
 	}
 
-	tail := atomic.LoadUint64(&q.tail)
-	head := atomic.LoadUint64(&q.head)
+	for {
+		tail := atomic.LoadUint64(&q.tail)
+		head := atomic.LoadUint64(&q.head)
 
-	if (tail+1)%q.size == head%q.size {
-		return false // full
+		// Проверка на переполнение: оставляем один слот пустым
+		if (tail+1)%q.size == head%q.size {
+			return false
+		}
+
+		// Пытаемся атомарно занять tail
+		if !atomic.CompareAndSwapUint64(&q.tail, tail, tail+1) {
+			// Конфликт — повторяем
+			continue
+		}
+
+		// Успешно захватили слот — записываем
+		q.buffer[tail%q.size] = job
+
+		// Сигнализируем (без блокировки)
+		select {
+		case q.notify <- struct{}{}:
+		default:
+		}
+		return true
 	}
-
-	q.buffer[tail%q.size] = job
-	atomic.StoreUint64(&q.tail, tail+1)
-
-	select {
-	case q.notify <- struct{}{}:
-	default:
-	}
-	return true
 }
 
 func (q *LockFreeQueue) TryPop() JobBatch {
-	head := atomic.LoadUint64(&q.head)
-	tail := atomic.LoadUint64(&q.tail)
+	for {
+		head := atomic.LoadUint64(&q.head)
+		tail := atomic.LoadUint64(&q.tail)
 
-	if head%q.size == tail%q.size {
-		return nil // empty
+		// Пусто?
+		if head%q.size == tail%q.size {
+			return nil
+		}
+
+		// Пытаемся атомарно продвинуть head
+		if !atomic.CompareAndSwapUint64(&q.head, head, head+1) {
+			continue
+		}
+
+		// Успешно захватили элемент
+		job := q.buffer[head%q.size]
+		q.buffer[head%q.size] = nil
+		return job
 	}
-
-	job := q.buffer[head%q.size]
-	q.buffer[head%q.size] = nil
-	atomic.StoreUint64(&q.head, head+1)
-	return job
 }
 
 func (q *LockFreeQueue) WaitPop(ctx context.Context) JobBatch {
@@ -83,7 +102,6 @@ func (q *LockFreeQueue) WaitPop(ctx context.Context) JobBatch {
 	}
 }
 
-// WorkerPool
 type WorkerPool struct {
 	workerCount int
 	queue       *LockFreeQueue
@@ -121,11 +139,11 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 
 	for i := 0; i < wp.workerCount; i++ {
 		wp.wg.Add(1)
-		go wp.worker(i, ctx)
+		go wp.worker(ctx)
 	}
 }
 
-func (wp *WorkerPool) worker(id int, ctx context.Context) {
+func (wp *WorkerPool) worker(ctx context.Context) {
 	defer wp.wg.Done()
 	globalMetrics := metrics.GetGlobalMetrics()
 	globalMetrics.IncrementActiveWorkers()
