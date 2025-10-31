@@ -1,3 +1,6 @@
+// Package stages contains implementations of pipeline processing stages,
+// including event generation and network sending,
+// each conforming to the coordinator.Stage interface.
 package stages
 
 import (

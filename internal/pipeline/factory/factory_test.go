@@ -12,7 +12,6 @@ func newTestConfig() *config.Config {
 	cfg := config.DefaultConfig()
 	cfg.Generator.EventTypes = []string{"netflow", "syslog"}
 	cfg.Generator.EventsPerSecond = 100
-	cfg.Sender.Name = "sender"
 	cfg.Sender.Destinations = []string{"127.0.0.1:514"}
 	cfg.Sender.Protocol = "udp"
 	cfg.Pipeline.BufferSize = 10

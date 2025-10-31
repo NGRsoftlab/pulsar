@@ -1,7 +1,6 @@
 package config
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,14 +49,14 @@ logging:
   format: "json"
 `
 
-	tmpDir, err := ioutil.TempDir("", "config-test")
+	tmpDir, err := os.MkdirTemp("", "config-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	configFile := filepath.Join(tmpDir, "test.yaml")
-	err = ioutil.WriteFile(configFile, []byte(configData), 0644)
+	err = os.WriteFile(configFile, []byte(configData), 0o644)
 	if err != nil {
 		t.Fatalf("Failed to write config file: %v", err)
 	}
@@ -71,10 +70,6 @@ logging:
 	cfg := loader.GetConfig()
 
 	// Проверяем загруженные значения
-	if cfg.Generator.Name != "test-generator" {
-		t.Errorf("Expected generator name 'test-generator', got '%s'", cfg.Generator.Name)
-	}
-
 	if cfg.Generator.EventsPerSecond != 50 {
 		t.Errorf("Expected events per second 50, got %d", cfg.Generator.EventsPerSecond)
 	}
@@ -165,10 +160,6 @@ func TestLoadFromEnv(t *testing.T) {
 	cfg := loader.GetConfig()
 
 	// Проверяем загруженные значения
-	if cfg.Generator.Name != "env-generator" {
-		t.Errorf("Expected generator name 'env-generator', got '%s'", cfg.Generator.Name)
-	}
-
 	if cfg.Generator.EventsPerSecond != 123 {
 		t.Errorf("Expected events per second 123, got %d", cfg.Generator.EventsPerSecond)
 	}

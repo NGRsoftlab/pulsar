@@ -1,3 +1,4 @@
+// Package coordinator manages the pipeline lifecycle
 package coordinator
 
 import (
@@ -23,7 +24,6 @@ type Pipeline interface {
 
 // Stage - интерфейс для этапа пайплайна
 type Stage interface {
-	Name() string
 	// Добавляем канал ready для сигнала готовности
 	Run(ctx context.Context, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool) error
 }
@@ -176,13 +176,11 @@ func (p *pipelineImpl) startStages() {
 		go func(s Stage, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool, index int) {
 			defer p.wg.Done()
 
-			fmt.Printf("▶️  Stage '%s' started\n", s.Name())
-
 			err := s.Run(p.ctx, in, out, ready)
 			if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
-				fmt.Printf("Stage '%s' finished with error: %v\n", s.Name(), err)
+				fmt.Printf("Stage finished with error: %v\n", err)
 			} else {
-				fmt.Printf("Stage '%s' finished successfully\n", s.Name())
+				fmt.Printf("Stage finished successfully\n")
 			}
 		}(stage, inputChan, outputChan, readyChan, i)
 	}
@@ -190,7 +188,7 @@ func (p *pipelineImpl) startStages() {
 	fmt.Printf("Waiting for all %d stages to initialize...\n", len(p.stages))
 	for i, ready := range readyChans {
 		<-ready
-		fmt.Printf("✅ Stage '%s' is ready\n", p.stages[i].Name())
+		fmt.Printf("✅ Stage '%v' is ready\n", i)
 	}
 	fmt.Printf("All stages ready! Pipeline is running.\n")
 }

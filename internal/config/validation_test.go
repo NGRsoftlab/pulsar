@@ -30,8 +30,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  100,
-					WorkerCount: 1,
+					BufferSize: 100,
 				},
 			},
 			expectError: true,
@@ -50,8 +49,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  100,
-					WorkerCount: 1,
+					BufferSize: 100,
 				},
 			},
 			expectError: true,
@@ -70,8 +68,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  100,
-					WorkerCount: 1,
+					BufferSize: 100,
 				},
 			},
 			expectError: true,
@@ -90,8 +87,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  100,
-					WorkerCount: 1,
+					BufferSize: 100,
 				},
 			},
 			expectError: true,
@@ -110,8 +106,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  100,
-					WorkerCount: 1,
+					BufferSize: 100,
 				},
 			},
 			expectError: true,
@@ -130,8 +125,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  100,
-					WorkerCount: 1,
+					BufferSize: 100,
 				},
 			},
 			expectError: true,
@@ -150,8 +144,7 @@ func TestConfigValidation(t *testing.T) {
 					Timeout:      5 * time.Second,
 				},
 				Pipeline: PipelineConfig{
-					BufferSize:  0,
-					WorkerCount: 1,
+					BufferSize: 0,
 				},
 			},
 			expectError: true,

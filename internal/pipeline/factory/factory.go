@@ -1,3 +1,5 @@
+// Package factory provides utilities to construct and configure
+// the event processing pipeline from application configuration.
 package factory
 
 import (
@@ -25,9 +27,7 @@ func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
 	// Рекомендуемая логика: если 0, вычисляем автоматически
 	if bufferSize == 0 {
 		bufferSize = f.cfg.Generator.EventsPerSecond * 3
-		if bufferSize < 1000 {
-			bufferSize = 1000
-		}
+		bufferSize = max(bufferSize, 1000)
 		if bufferSize > 200000 {
 			bufferSize = 200000
 		}
@@ -52,7 +52,6 @@ func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
 
 func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 	genStage := stages.NewEventGenerationStage(
-		f.cfg.Generator.Name,
 		f.cfg.Generator.EventsPerSecond,
 		f.cfg, // оставляем cfg, как в твоём оригинальном коде
 	)
@@ -70,7 +69,7 @@ func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 }
 
 func (f *PipelineFactory) createSendingStage() (coordinator.Stage, error) {
-	sendStage := stages.NewNetworkSendingStage(f.cfg.Sender.Name)
+	sendStage := stages.NewNetworkSendingStage()
 
 	if err := sendStage.SetDestinations(f.cfg.Sender.Destinations); err != nil {
 		return nil, fmt.Errorf("failed to set destinations: %w", err)

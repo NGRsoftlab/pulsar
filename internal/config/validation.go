@@ -76,9 +76,5 @@ func (p *PipelineConfig) Validate() error {
 		return fmt.Errorf("buffer_size must be positive, got: %d", p.BufferSize)
 	}
 
-	if p.WorkerCount <= 0 {
-		return fmt.Errorf("worker_count must be positive, got: %d", p.WorkerCount)
-	}
-
 	return nil
 }

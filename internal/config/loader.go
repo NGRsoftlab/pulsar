@@ -94,7 +94,7 @@ func (l *Loader) GetConfig() *Config {
 }
 
 // loadEnvVars загружает переменные окружения используя рефлексию
-func (l *Loader) loadEnvVars(config interface{}) error {
+func (l *Loader) loadEnvVars(config any) error {
 	return l.loadEnvVarsRecursive(reflect.ValueOf(config), "")
 }
 

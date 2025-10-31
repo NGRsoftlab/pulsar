@@ -60,19 +60,16 @@ func TestLoadConfiguration_WithDestinations(t *testing.T) {
 func TestPrintConfigInfo(t *testing.T) {
 	cfg := &config.Config{
 		Generator: config.GeneratorConfig{
-			Name:            "test-gen",
 			EventsPerSecond: 50,
 			EventTypes:      []string{"login", "logout"},
 			Duration:        10 * time.Second,
 		},
 		Sender: config.SenderConfig{
-			Name:         "test-sender",
 			Protocol:     "tcp",
 			Destinations: []string{"localhost:514"},
 		},
 		Pipeline: config.PipelineConfig{
-			BufferSize:  10,
-			WorkerCount: 2,
+			BufferSize: 10,
 		},
 		Logging: config.LoggingConfig{
 			Level:  "info",

@@ -1,3 +1,4 @@
+// Package cli implements the command-line inteface
 package cli
 
 import (
@@ -150,8 +151,7 @@ func printConfigInfo(cfg *config.Config, flags *CLIFlags) {
 	}
 
 	// Основные параметры
-	fmt.Printf("Generator: %s (%d events/sec)\n",
-		cfg.Generator.Name, cfg.Generator.EventsPerSecond)
+	fmt.Printf("Generator: %d events/sec\n", cfg.Generator.EventsPerSecond)
 	fmt.Printf("Event types: %v\n", cfg.Generator.EventTypes)
 
 	if cfg.Generator.Duration > 0 {
@@ -160,13 +160,10 @@ func printConfigInfo(cfg *config.Config, flags *CLIFlags) {
 		fmt.Printf("Duration: unlimited\n")
 	}
 
-	fmt.Printf("Sender: %s (%s protocol)\n",
-		cfg.Sender.Name, cfg.Sender.Protocol)
+	fmt.Printf("Sender: %s protocol\n", cfg.Sender.Protocol)
 	fmt.Printf("Destinations: %v\n", cfg.Sender.Destinations)
-	fmt.Printf("Pipeline: buffer=%d, workers=%d\n",
-		cfg.Pipeline.BufferSize, cfg.Pipeline.WorkerCount)
-	fmt.Printf("Logging: level=%s, format=%s\n",
-		cfg.Logging.Level, cfg.Logging.Format)
+	fmt.Printf("Pipeline: buffer=%d", cfg.Pipeline.BufferSize)
+	fmt.Printf("Logging: level=%s, format=%s\n", cfg.Logging.Level, cfg.Logging.Format)
 
 	fmt.Printf("===============================\n\n")
 }

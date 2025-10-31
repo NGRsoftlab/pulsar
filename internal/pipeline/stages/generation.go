@@ -66,7 +66,6 @@ func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 
 // EventGenerationStage генерирует события с высокой скоростью
 type EventGenerationStage struct {
-	name            string
 	eventTypes      []event.EventType
 	eventsPerSecond int
 
@@ -77,11 +76,9 @@ type EventGenerationStage struct {
 }
 
 // NewEventGenerationStage создаёт стадию генерации
-func NewEventGenerationStage(name string, eventsPerSecond int, cfg *config.Config) *EventGenerationStage {
+func NewEventGenerationStage(eventsPerSecond int, cfg *config.Config) *EventGenerationStage {
 	queueSize := eventsPerSecond * 2
-	if queueSize <= 1000 {
-		queueSize = 1000
-	}
+	queueSize = max(queueSize, 1000)
 
 	workerPool := workers.NewWorkerPool(0, queueSize, func() workers.JobBatch {
 		return &EventGenerationJobBatch{
@@ -100,17 +97,12 @@ func NewEventGenerationStage(name string, eventsPerSecond int, cfg *config.Confi
 	}
 
 	return &EventGenerationStage{
-		name:              name,
 		eventsPerSecond:   eventsPerSecond,
 		eventTypes:        []event.EventType{event.EventTypeNetflow},
 		workerPool:        workerPool,
 		serializationMode: serializationMode,
 		packetMode:        packetMode,
 	}
-}
-
-func (g *EventGenerationStage) Name() string {
-	return g.name
 }
 
 // Run запускает генерацию событий с batch + таймаут

@@ -15,7 +15,6 @@ import (
 
 // NetworkSendingStage реализует SendingStage для отправки по сети
 type NetworkSendingStage struct {
-	name         string
 	destinations []string // ["127.0.0.1:514", "10.0.0.1:514"]
 	protocol     string   // "udp" или "tcp"
 	timeout      time.Duration
@@ -27,7 +26,7 @@ type NetworkSendingStage struct {
 	input      chan event.Event
 }
 
-func NewNetworkSendingStage(name string) *NetworkSendingStage {
+func NewNetworkSendingStage() *NetworkSendingStage {
 	workerPool := workers.NewWorkerPool(0, 5000, func() workers.JobBatch {
 		return &NetworkSendJobBatch{
 			data: make([]*SerializedData, 0, 50), // предварительная ёмкость
@@ -35,7 +34,6 @@ func NewNetworkSendingStage(name string) *NetworkSendingStage {
 	})
 	workerPool.SetPoolType("network")
 	return &NetworkSendingStage{
-		name:         name,
 		destinations: []string{"127.0.0.1:514"},
 		protocol:     "udp",
 		timeout:      5 * time.Second,
@@ -43,10 +41,6 @@ func NewNetworkSendingStage(name string) *NetworkSendingStage {
 		metrics:      metrics.NewPerformanceMetrics(),
 		input:        make(chan event.Event, 1000),
 	}
-}
-
-func (s *NetworkSendingStage) Name() string {
-	return s.name
 }
 
 type NetworkSendJobBatch struct {
@@ -364,11 +358,10 @@ func (s *NetworkSendingStage) GetFailedCount() uint64 {
 	return failed
 }
 
-func (s *NetworkSendingStage) GetStageStats() map[string]interface{} {
+func (s *NetworkSendingStage) GetStageStats() map[string]any {
 	_, sent, failed, dropped := metrics.GetGlobalMetrics().GetStats()
 
-	stats := map[string]interface{}{
-		"stage_name":          s.name,
+	stats := map[string]any{
 		"protocol":            s.protocol,
 		"destinations":        len(s.destinations),
 		"events_sent":         sent,
