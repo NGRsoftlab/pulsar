@@ -54,11 +54,14 @@ func (c countingJob) ExecuteBatch() error {
 }
 
 func TestWorkerPool_Integration_SingleJob(t *testing.T) {
-	var jobExecuted bool
+	var wg sync.WaitGroup
 	wp := NewWorkerPool(1, 2, func() JobBatch { return &mockJob{} })
 
+	wg.Add(1)
 	job := countingJob{
-		fn: func() { jobExecuted = true },
+		fn: func() {
+			defer wg.Done()
+		},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -67,11 +70,20 @@ func TestWorkerPool_Integration_SingleJob(t *testing.T) {
 	wp.Start(ctx)
 	defer wp.Stop()
 
-	assert.True(t, wp.Submit(job), "ожидалась успешная отправка задачи")
+	assert.True(t, wp.Submit(&job))
 
-	time.Sleep(20 * time.Millisecond)
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
 
-	assert.True(t, jobExecuted, "ожидалось выполнение задачи")
+	select {
+	case <-done:
+		t.Log("Задача выполнена")
+	case <-time.After(1 * time.Second):
+		t.Fatal("Timeout")
+	}
 }
 
 func TestWorkerPool_Integration_MultitipleJobs(t *testing.T) {
