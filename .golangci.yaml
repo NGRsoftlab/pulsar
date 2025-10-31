@@ -1,93 +1,61 @@
 run:
   timeout: 5m
+  concurrency: 4
+  fast: true
   tests: true
-
-linters-settings:
-  govet:
-    check-shadowing: true
-  gocyclo:
-    min-complexity: 15
-  maligned:
-    suggest-new: true
-  dupl:
-    threshold: 120
-  goconst:
-    min-len: 2
-    min-occurrences: 3
-  misspell:
-    locale: US
-  lll:
-    line-length: 120
-  goimports:
-    local-prefixes: github.com/nashabanov/ueba-event-generator
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-  funlen:
-    lines: 100
-    statements: 50
 
 linters:
   enable:
     - bodyclose
     - deadcode
-    - depguard
-    - dogsled
-    - dupl
     - errcheck
-    - funlen
-    - gochecknoinits
-    - goconst
-    - gocritic
-    - gocyclo
-    - gofmt
-    - goimports
-    - golint
-    - gomnd
-    - goprintffuncname
-    - gosec
     - gosimple
     - govet
     - ineffassign
-    - interfacer
-    - lll
-    - misspell
-    - nakedret
-    - rowserrcheck
-    - scopelint
     - staticcheck
-    - structcheck
-    - stylecheck
-    - typecheck
-    - unconvert
-    - unparam
+    - revive
     - unused
-    - varcheck
-    - whitespace
-  
+    - unparam
+    - gofmt 
+    - goimports
   disable:
-    - maligned  # Устарел в новых версиях
+    - dupl
+    - gocritic
+    - funlen
+    - goconst
+    - lll
+
+linters-setting:
+  govent:
+    check-shadowing: truegocyclo
+  gocyclo:
+    min-complexity: 15
+  goimports:
+    local-prefixes: github.com/nashabanov/ueba-event-generator
+
+formatters:
+  enable:
+    - goimports
+    - golines
 
 issues:
+  max-sama-issue: 0
   exclude-rules:
     - path: _test\.go
       linters:
-        - gomnd
         - funlen
         - dupl
+        - gomnd
+        - errcheck
+        - revive
     - path: cmd/
       linters:
         - gochecknoinits
-
   exclude:
-    # Allow embedding structs without interface
     - 'should have a package comment'
-    # Allow long lines in tests
     - 'line is \d+ characters'
 
 output:
-  format: github-actions
+  formats:
+    - format: colored-line-number
+
