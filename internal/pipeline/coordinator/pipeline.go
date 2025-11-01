@@ -95,7 +95,6 @@ func (p *pipelineImpl) Start(ctx context.Context) error {
 	p.startStages()
 
 	p.status = Running
-	fmt.Printf("✅ Pipeline started with %d stages\n", len(p.stages))
 	return nil
 }
 
@@ -109,8 +108,6 @@ func (p *pipelineImpl) Stop() error {
 	p.status = Stopping
 	p.mu.Unlock()
 
-	fmt.Printf("⏹️  Stopping pipeline...\n")
-
 	if p.cancel != nil {
 		p.cancel()
 	}
@@ -119,13 +116,11 @@ func (p *pipelineImpl) Stop() error {
 	close(p.inputChan)
 
 	p.wg.Wait()
-	p.closeChannels()
 
 	p.mu.Lock()
 	p.status = Stopped
 	p.mu.Unlock()
 
-	fmt.Printf("⏹️  Pipeline stopped successfully\n")
 	return nil
 }
 
@@ -153,7 +148,6 @@ func (p *pipelineImpl) createChannels() {
 	p.channels = make([]chan *stages.SerializedData, stageCount-1)
 	for i := 0; i < stageCount-1; i++ {
 		p.channels[i] = make(chan *stages.SerializedData, p.bufferSize)
-		fmt.Printf("🔗 Created intermediate channel %d with buffer size %d\n", i, p.bufferSize)
 	}
 }
 
@@ -175,6 +169,7 @@ func (p *pipelineImpl) startStages() {
 
 		go func(s Stage, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool, index int) {
 			defer p.wg.Done()
+			defer close(out)
 
 			err := s.Run(p.ctx, in, out, ready)
 			if err != nil && err != context.Canceled && err != context.DeadlineExceeded {
@@ -185,12 +180,9 @@ func (p *pipelineImpl) startStages() {
 		}(stage, inputChan, outputChan, readyChan, i)
 	}
 
-	fmt.Printf("Waiting for all %d stages to initialize...\n", len(p.stages))
-	for i, ready := range readyChans {
+	for _, ready := range readyChans {
 		<-ready
-		fmt.Printf("✅ Stage '%v' is ready\n", i)
 	}
-	fmt.Printf("All stages ready! Pipeline is running.\n")
 }
 
 // getInputChannel возвращает входной канал для указанной стадии
@@ -207,15 +199,4 @@ func (p *pipelineImpl) getOutputChannel(stageIndex int) chan<- *stages.Serialize
 		return p.outputChan // Последняя пишет в выход
 	}
 	return p.channels[stageIndex] // Остальные в промежуточные
-}
-
-// closeChannels закрывает все каналы пайплайна
-func (p *pipelineImpl) closeChannels() {
-	for _, ch := range p.channels {
-		close(ch)
-	}
-	if p.outputChan != nil {
-		close(p.outputChan)
-	}
-	fmt.Printf("CloseOperation: Closed all pipeline channels\n")
 }
