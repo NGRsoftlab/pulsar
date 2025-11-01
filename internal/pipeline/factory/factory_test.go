@@ -3,75 +3,267 @@ package factory
 import (
 	"testing"
 
-	"github.com/nashabanov/ueba-event-generator/internal/config"
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/nashabanov/ueba-event-generator/internal/config"
 )
 
-func newTestConfig() *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Generator.EventTypes = []string{"netflow", "syslog"}
-	cfg.Generator.EventsPerSecond = 100
-	cfg.Sender.Destinations = []string{"127.0.0.1:514"}
-	cfg.Sender.Protocol = "udp"
-	cfg.Pipeline.BufferSize = 10
-	return cfg
+func TestPipelineFactory_ParseEventTypes(t *testing.T) {
+	tests := []struct {
+		name        string
+		eventTypes  []string
+		expectError bool
+	}{
+		{
+			name:        "valid netflow",
+			eventTypes:  []string{"netflow"},
+			expectError: false,
+		},
+		{
+			name:        "unsupported syslog",
+			eventTypes:  []string{"syslog"},
+			expectError: true,
+		},
+		{
+			name:        "unknown type",
+			eventTypes:  []string{"unknown"},
+			expectError: true,
+		},
+		{
+			name:        "empty",
+			eventTypes:  []string{},
+			expectError: false,
+		},
+		{
+			name:        "mixed",
+			eventTypes:  []string{"syslog", "netflow"},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Generator: config.GeneratorConfig{
+					EventTypes: tt.eventTypes,
+				},
+			}
+			factory := NewPipelineFactory(cfg)
+
+			_, err := factory.ParseEventTypes()
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
-func TestParseEventTypes_Success(t *testing.T) {
-	cfg := newTestConfig()
-	f := NewPipelineFactory(cfg)
+func TestPipelineFactory_createGenerationStage(t *testing.T) {
+	t.Run("success with netflow", func(t *testing.T) {
+		cfg := &config.Config{
+			Generator: config.GeneratorConfig{
+				EventsPerSecond: 100,
+				EventTypes:      []string{"netflow"},
+			},
+		}
+		factory := NewPipelineFactory(cfg)
 
-	types, err := f.ParseEventTypes()
-	assert.NoError(t, err)
-	assert.Len(t, types, 2)
-	assert.Contains(t, types, event.EventTypeNetflow)
-	assert.Contains(t, types, event.EventTypeSyslog)
+		stage, err := factory.createGenerationStage()
+		assert.NoError(t, err)
+		assert.NotNil(t, stage)
+	})
+	t.Run("error with unsupported type", func(t *testing.T) {
+		cfg := &config.Config{
+			Generator: config.GeneratorConfig{
+				EventsPerSecond: 100,
+				EventTypes:      []string{"syslog"},
+			},
+		}
+		factory := NewPipelineFactory(cfg)
+
+		_, err := factory.createGenerationStage()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "syslog events are not supported yet")
+	})
 }
 
-func TestParseEventTypes_Unsupported(t *testing.T) {
-	cfg := newTestConfig()
-	cfg.Generator.EventTypes = []string{"unknown"}
-	f := NewPipelineFactory(cfg)
+func TestPipelineFactory_createSendingStage(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		cfg := &config.Config{
+			Sender: config.SenderConfig{
+				Destinations: []string{"127.0.0.1:8080"},
+				Protocol:     "udp",
+			},
+		}
+		factory := NewPipelineFactory(cfg)
 
-	types, err := f.ParseEventTypes()
-	assert.Error(t, err)
-	assert.Nil(t, types)
+		stage, err := factory.createSendingStage()
+		assert.NoError(t, err)
+		assert.NotNil(t, stage)
+	})
+	t.Run("", func(t *testing.T) {
+		cfg := &config.Config{
+			Sender: config.SenderConfig{
+				Destinations: []string{},
+				Protocol:     "tcp",
+			},
+		}
+		factory := NewPipelineFactory(cfg)
+
+		stage, err := factory.createSendingStage()
+		assert.Error(t, err)
+		assert.Nil(t, stage)
+	})
 }
 
-func TestCreateGenerationStage(t *testing.T) {
-	cfg := newTestConfig()
-	f := NewPipelineFactory(cfg)
+func TestPipelineFactory_bufferSizeCalculation(t *testing.T) {
+	tests := []struct {
+		name               string
+		bufferSize         int
+		eventsPerSecond    int
+		expectedBufferSize int
+	}{
+		{"explicit buffer", 500, 100, 500},
+		{"auto: low EPS", 0, 100, 1000},
+		{"auto: medium EPS", 0, 5000, 15000},
+		{"auto: high EPS", 0, 100000, 200000},
+		{"auto: zero EPS", 0, 0, 1000},
+	}
 
-	stage, err := f.createGenerationStage()
-	assert.NoError(t, err)
-	assert.NotNil(t, stage)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Pipeline: config.PipelineConfig{
+					BufferSize: tt.bufferSize,
+				},
+				Generator: config.GeneratorConfig{
+					EventsPerSecond: tt.eventsPerSecond,
+					EventTypes:      []string{"netflow"},
+				},
+				Sender: config.SenderConfig{
+					Destinations: []string{"127.0.0.1:9999"},
+					Protocol:     "udp",
+				},
+			}
+			factory := NewPipelineFactory(cfg)
+
+			pipeline, err := factory.CreatePipeline()
+			assert.NoError(t, err)
+			assert.NotNil(t, pipeline)
+		})
+	}
 }
 
-func TestCreateSendingStage(t *testing.T) {
-	cfg := newTestConfig()
-	f := NewPipelineFactory(cfg)
+func TestPipelineFactory_CreatePipeline(t *testing.T) {
+	t.Run("success with valid config", func(t *testing.T) {
+		cfg := &config.Config{
+			Pipeline: config.PipelineConfig{
+				BufferSize: 0, // авто
+			},
+			Generator: config.GeneratorConfig{
+				EventsPerSecond: 500,
+				EventTypes:      []string{"netflow"},
+			},
+			Sender: config.SenderConfig{
+				Destinations: []string{"localhost:1234"},
+				Protocol:     "udp",
+			},
+		}
 
-	stage, err := f.createSendingStage()
-	assert.NoError(t, err)
-	assert.NotNil(t, stage)
+		factory := NewPipelineFactory(cfg)
+		pipeline, err := factory.CreatePipeline()
+
+		assert.NoError(t, err)
+		assert.NotNil(t, pipeline)
+	})
+
+	t.Run("fails when event type unsupported", func(t *testing.T) {
+		cfg := &config.Config{
+			Generator: config.GeneratorConfig{
+				EventTypes: []string{"syslog"},
+			},
+		}
+
+		factory := NewPipelineFactory(cfg)
+		_, err := factory.CreatePipeline()
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create generation stage")
+		assert.Contains(t, err.Error(), "syslog events are not supported yet")
+	})
 }
 
-func TestCreatePipeline_Success(t *testing.T) {
-	cfg := newTestConfig()
-	f := NewPipelineFactory(cfg)
+func TestPipelineFactory_calculateBufferSize(t *testing.T) {
+	tests := []struct {
+		name               string
+		pipelineBufferSize int
+		eventsPerSecond    int
+		expectedBufferSize int
+	}{
+		{
+			name:               "explicit buffer size is used",
+			pipelineBufferSize: 5000,
+			eventsPerSecond:    100,
+			expectedBufferSize: 5000,
+		},
+		{
+			name:               "auto: low EPS → clamped to min 1000",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    100, expectedBufferSize: 1000,
+		},
+		{
+			name:               "auto: medium EPS → exact value",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    5000, expectedBufferSize: 15000,
+		},
+		{
+			name:               "auto: high EPS → capped at 200000",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    100000, expectedBufferSize: 200000,
+		},
+		{
+			name:               "auto: zero EPS → min 1000",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    0,
+			expectedBufferSize: 1000,
+		},
+		{
+			name:               "auto: negative EPS (edge case) → still min 1000",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    -10,
+			expectedBufferSize: 1000,
+		},
+		{
+			name:               "auto: exactly at cap",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    66666, expectedBufferSize: 199998,
+		},
+		{
+			name:               "auto: just above cap",
+			pipelineBufferSize: 0,
+			eventsPerSecond:    66667, expectedBufferSize: 200000,
+		},
+	}
 
-	pipeline, err := f.CreatePipeline()
-	assert.NoError(t, err)
-	assert.NotNil(t, pipeline)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Pipeline: config.PipelineConfig{
+					BufferSize: tt.pipelineBufferSize,
+				},
+				Generator: config.GeneratorConfig{
+					EventsPerSecond: tt.eventsPerSecond,
+				},
+			}
+			factory := NewPipelineFactory(cfg)
 
-func TestCreatePipeline_InvalidEventType(t *testing.T) {
-	cfg := newTestConfig()
-	cfg.Generator.EventTypes = []string{"netflow", "invalid"}
-	f := NewPipelineFactory(cfg)
+			actual := factory.calculateBufferSize()
 
-	pipeline, err := f.CreatePipeline()
-	assert.Error(t, err)
-	assert.Nil(t, pipeline)
+			assert.Equal(t, tt.expectedBufferSize, actual,
+				"buffer size mismatch: expected %d, got %d", tt.expectedBufferSize, actual)
+		})
+	}
 }

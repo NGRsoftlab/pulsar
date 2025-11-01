@@ -20,25 +20,32 @@ func NewPipelineFactory(cfg *config.Config) *PipelineFactory {
 	return &PipelineFactory{cfg: cfg}
 }
 
-func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
-	// Буфер теперь напрямую соответствует нагрузке
-	bufferSize := f.cfg.Pipeline.BufferSize
-
-	// Рекомендуемая логика: если 0, вычисляем автоматически
-	if bufferSize == 0 {
-		bufferSize = f.cfg.Generator.EventsPerSecond * 3
-		bufferSize = max(bufferSize, 1000)
-		if bufferSize > 200000 {
-			bufferSize = 200000
-		}
+func (f *PipelineFactory) calculateBufferSize() int {
+	if f.cfg.Pipeline.BufferSize != 0 {
+		return f.cfg.Pipeline.BufferSize
 	}
+	size := f.cfg.Generator.EventsPerSecond * 3
+	size = max(size, 1000)
+	if size > 200000 {
+		size = 200000
+	}
+	return size
+}
 
+func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
+	bufferSize := f.calculateBufferSize()
 	pipeline := coordinator.NewPipeline(bufferSize)
 
-	genStage, _ := f.createGenerationStage()
-	sendStage, _ := f.createSendingStage()
+	genStage, err := f.createGenerationStage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create generation stage: %w", err)
+	}
 
-	// Добавляем напрямую — без адаптеров!
+	sendStage, err := f.createSendingStage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sending stage: %w", err)
+	}
+
 	if err := pipeline.AddStage(genStage); err != nil {
 		return nil, fmt.Errorf("failed to add generation stage: %w", err)
 	}
@@ -53,8 +60,7 @@ func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
 func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 	genStage := stages.NewEventGenerationStage(
 		f.cfg.Generator.EventsPerSecond,
-		f.cfg, // оставляем cfg, как в твоём оригинальном коде
-	)
+		f.cfg)
 
 	eventTypes, err := f.ParseEventTypes()
 	if err != nil {
@@ -90,7 +96,6 @@ func (f *PipelineFactory) ParseEventTypes() ([]event.EventType, error) {
 		case "netflow":
 			eventTypes[i] = event.EventTypeNetflow
 		case "syslog":
-			// syslog пока не поддерживается
 			return nil, fmt.Errorf("syslog events are not supported yet")
 		default:
 			return nil, fmt.Errorf("unsupported event type: %s", typeStr)
