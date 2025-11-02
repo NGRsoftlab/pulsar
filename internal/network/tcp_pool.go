@@ -19,6 +19,15 @@ type TCPConnection struct {
 	mutex     sync.RWMutex
 }
 
+func (conn *TCPConnection) SetWriteDeadline(deadline time.Time) error {
+	conn.mutex.RLock()
+	defer conn.mutex.RUnlock()
+	if conn.conn == nil {
+		return fmt.Errorf("no underlying connection")
+	}
+	return conn.conn.SetWriteDeadline(deadline)
+}
+
 type TCPConnectionPool struct {
 	connections []*TCPConnection
 	destination string
