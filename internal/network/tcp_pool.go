@@ -1,3 +1,4 @@
+// Package network tcp_pool.go - релизация пула tcp подключений
 package network
 
 import (
@@ -47,7 +48,7 @@ func NewTCPConnectionPool(destination string, poolSize int) (*TCPConnectionPool,
 
 	// Создаем все соединения сразу
 	successCount := 0
-	for i := 0; i < poolSize; i++ {
+	for i := range poolSize {
 		conn, err := pool.createConnection(i)
 		if err != nil {
 			log.Printf("Failed to create connection %d: %v", i, err)

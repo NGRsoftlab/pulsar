@@ -1,3 +1,4 @@
+// Package metrics сбор и подсчет метрик пайплайна
 package metrics
 
 import (
@@ -53,6 +54,7 @@ func NewPerformanceMetrics() *PerformanceMetrics {
 }
 
 // === МЕТОДЫ ДЛЯ СОБЫТИЙ ===
+
 func (m *PerformanceMetrics) IncrementGenerated() {
 	atomic.AddUint64(&m.generatedEvents, 1)
 }
@@ -70,6 +72,7 @@ func (m *PerformanceMetrics) IncrementDropped() {
 }
 
 // === МЕТОДЫ ДЛЯ СЕТИ ===
+
 func (m *PerformanceMetrics) IncrementConnections() {
 	atomic.AddUint64(&m.networkConnections, 1)
 }
@@ -87,6 +90,7 @@ func (m *PerformanceMetrics) IncrementTimeouts() {
 }
 
 // === МЕТОДЫ ДЛЯ WORKER POOL ===
+
 func (m *PerformanceMetrics) IncrementActiveWorkers() {
 	atomic.AddUint64(&m.activeWorkers, 1)
 }
@@ -108,6 +112,7 @@ func (m *PerformanceMetrics) IncrementRejectedJobs() {
 }
 
 // === МЕТОДЫ ДЛЯ ПРОИЗВОДИТЕЛЬНОСТИ ===
+
 func (m *PerformanceMetrics) RecordProcessingTime(duration time.Duration) {
 	nanos := uint64(duration.Nanoseconds())
 
@@ -182,7 +187,7 @@ func (m *PerformanceMetrics) calculateCurrentEPS() float64 {
 
 // === МЕТОДЫ ПОЛУЧЕНИЯ СТАТИСТИКИ ===
 
-// GetBasicStats возвращает основные метрики (совместимость с твоим кодом)
+// GetStats возвращает основные метрики (совместимость с твоим кодом)
 func (m *PerformanceMetrics) GetStats() (generated, sent, failed uint64, eps float64) {
 	generated = atomic.LoadUint64(&m.generatedEvents)
 	sent = atomic.LoadUint64(&m.sentEvents)
@@ -196,7 +201,7 @@ func (m *PerformanceMetrics) GetStats() (generated, sent, failed uint64, eps flo
 	return generated, sent, failed, eps
 }
 
-// GetDetailedStats возвращает подробную статистику
+// DetailedStats возвращает подробную статистику
 type DetailedStats struct {
 	// События
 	Generated uint64 `json:"generated"`

@@ -1,3 +1,4 @@
+// Package network udp_sender - реализация интерфейса Sender для отправки сообщенний по upd
 package network
 
 import (
@@ -5,8 +6,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
 )
 
 type UDPSender struct {
@@ -21,7 +20,6 @@ func NewUDPSender(destination string, timeout time.Duration) (*UDPSender, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dial UDP %s: %w", destination, err)
 	}
-	metrics.GetGlobalMetrics().IncrementConnections()
 	return &UDPSender{
 		conn:       conn,
 		timeout:    timeout,
@@ -44,11 +42,9 @@ func (u *UDPSender) Send(destination string, data []byte) error {
 	u.conn.SetWriteDeadline(time.Now().Add(u.timeout))
 	_, err := u.conn.Write(data)
 	if err != nil {
-		metrics.GetGlobalMetrics().IncrementTimeouts()
 		return fmt.Errorf("UDP write failde to %s: %w", destination, err)
 	}
 
-	metrics.GetGlobalMetrics().IncrementSent()
 	return nil
 }
 
@@ -58,7 +54,6 @@ func (u *UDPSender) Close() error {
 	if u.conn != nil {
 		err := u.conn.Close()
 		u.conn = nil
-		metrics.GetGlobalMetrics().DecrementConnections()
 		return err
 	}
 

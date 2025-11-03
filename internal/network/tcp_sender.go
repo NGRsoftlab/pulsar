@@ -1,10 +1,9 @@
+// Package network tcp_sender.go - релизация интерфейса Sender для отправки по tcp
 package network
 
 import (
 	"fmt"
 	"time"
-
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
 )
 
 type ConnectionPool interface {
@@ -38,7 +37,6 @@ func (t *TCPSender) Send(destination string, data []byte) error {
 
 	conn := t.pool.GetConnection()
 	if conn == nil {
-		metrics.GetGlobalMetrics().IncrementTimeouts()
 		return fmt.Errorf("no healthy TCP connection to %s", destination)
 	}
 
@@ -49,13 +47,11 @@ func (t *TCPSender) Send(destination string, data []byte) error {
 		n, err := conn.Write(dataWithNewline[written:])
 		if err != nil {
 			conn.MarkUnhealthy()
-			metrics.GetGlobalMetrics().IncrementTimeouts()
 			return fmt.Errorf("TCP write failed to %s: %w", destination, err)
 		}
 		written += n
 	}
 
-	metrics.GetGlobalMetrics().IncrementSent()
 	return nil
 }
 

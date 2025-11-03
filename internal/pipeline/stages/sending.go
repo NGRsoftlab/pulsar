@@ -13,13 +13,29 @@ import (
 	"github.com/nashabanov/ueba-event-generator/internal/workers"
 )
 
+type Sender interface {
+	// Send отправляет данные по указанному destination
+	// формат destination "host:port"
+	Send(destination string, data []byte) error
+
+	// Close закрывает все соединения
+	Close() error
+
+	// IsHealthy возвращает true, если Sender способен работать
+	// Второе значение для диагностики
+	IsHealthy() (bool, string)
+
+	// SetTimeout устанавливает таймаут на операции записи
+	SetTimeout(timeout time.Duration)
+}
+
 // NetworkSendingStage реализует SendingStage для отправки по сети
 type NetworkSendingStage struct {
 	destinations []string
 	protocol     string
 	timeout      time.Duration
 
-	sender     network.Sender
+	sender     Sender
 	workerPool *workers.WorkerPool
 	metrics    *metrics.PerformanceMetrics
 	input      chan event.Event
@@ -60,11 +76,11 @@ func (jb *NetworkSendJobBatch) ExecuteBatch() error {
 		return fmt.Errorf("job batch is nil")
 	}
 
-	//	for _, d := range jb.data {
-	//		if err := jb.stage.SendData(d); err != nil {
-	//nolint:revive // intentionally empty
-	//		}
-	//	}
+	for _, d := range jb.data {
+		if err := jb.stage.SendData(d); err != nil {
+			log.Printf("Failed to send data to %s: %v", d.Destination, err)
+		}
+	}
 
 	jb.data = jb.data[:0]
 	return nil
@@ -160,30 +176,6 @@ func (s *NetworkSendingStage) SendData(data *SerializedData) error {
 	return nil
 }
 
-func (s *NetworkSendingStage) GetConnectionStats() (total, healthy int) {
-	// Теперь статистика берётся из sender
-	stats := s.sender.GetStats()
-	if t, ok := stats["connections_total"].(int); ok {
-		total = t
-	}
-	if h, ok := stats["connections_healthy"].(int); ok {
-		healthy = h
-	}
-	return
-}
-
-func (s *NetworkSendingStage) GetConnectionPoolInfo() string {
-	if s.protocol == "tcp" {
-		stats := s.sender.GetStats()
-		if total, ok1 := stats["connections_total"].(int); ok1 {
-			if healthy, ok2 := stats["connections_healthy"].(int); ok2 {
-				return fmt.Sprintf("TCP pool: %d/%d healthy connections", healthy, total)
-			}
-		}
-	}
-	return "Not applicable"
-}
-
 func (s *NetworkSendingStage) SetDestinations(destinations []string) error {
 	if len(destinations) == 0 {
 		return fmt.Errorf("destinations cannot be empty")
@@ -227,7 +219,7 @@ func (s *NetworkSendingStage) SetProtocol(protocol string) error {
 	return nil
 }
 
-func (s *NetworkSendingStage) createSender(dest string) (network.Sender, error) {
+func (s *NetworkSendingStage) createSender(dest string) (Sender, error) {
 	switch s.protocol {
 	case "udp":
 		return network.NewUDPSender(dest, s.timeout)
@@ -238,11 +230,10 @@ func (s *NetworkSendingStage) createSender(dest string) (network.Sender, error) 
 	}
 }
 
-// Методы ResizeConnectionPool и RecreateUnhealthyConnections
+// ResizeConnectionPool и RecreateUnhealthyConnections
 // теперь работают через sender (если он поддерживает)
 // Для простоты оставим их как есть, но они будут возвращать ошибку,
 // если sender не TCP
-
 func (s *NetworkSendingStage) ResizeConnectionPool(newSize int) error {
 	if s.protocol != "tcp" {
 		return fmt.Errorf("pool resizing only supported for TCP")
@@ -276,12 +267,6 @@ func (s *NetworkSendingStage) GetStageStats() map[string]any {
 		"worker_pool_healthy": s.workerPool != nil,
 	}
 
-	// Добавляем статистику от sender'а
-	senderStats := s.sender.GetStats()
-	for k, v := range senderStats {
-		stats["sender_"+k] = v
-	}
-
 	return stats
 }
 
@@ -309,22 +294,6 @@ func (s *NetworkSendingStage) GetOptimizationRecommendations() []string {
 		if failRate > 5.0 {
 			recommendations = append(recommendations,
 				fmt.Sprintf("High failure rate (%.1f%%) - check network connectivity", failRate))
-		}
-	}
-
-	if s.protocol == "tcp" {
-		stats := s.sender.GetStats()
-		if total, ok1 := stats["connections_total"].(int); ok1 {
-			if healthy, ok2 := stats["connections_healthy"].(int); ok2 {
-				if healthy < total {
-					recommendations = append(recommendations,
-						fmt.Sprintf("TCP connections degraded (%d/%d)", healthy, total))
-				}
-				if total < 5 && sent > 50000 {
-					recommendations = append(recommendations,
-						"High load with few TCP connections - increase pool size")
-				}
-			}
 		}
 	}
 

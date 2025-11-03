@@ -12,9 +12,13 @@ BINARY_PATH=./cmd/main
 build:
 	$(GOBUILD) -o $(BINARY_NAME) $(BINARY_PATH)
 
-# Run tests
-test:
-	$(GOTEST) ./...
+# Run tests all tests from root dir
+testall:
+	$(GOTEST) ./... -v -race
+
+# Run becnhmarks from some project package 
+test-bench:
+	$(GOTEST) ./... -bench='.' -benchtime=1s -cpu='4,8'
 
 # Run linter
 lint:
