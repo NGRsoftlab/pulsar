@@ -6,7 +6,7 @@ GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 BINARY_NAME=ueba-event-generator.exe
-BINARY_PATH=./cmd/main
+BINARY_PATH=./cmd
 
 # Build the binary
 build:
