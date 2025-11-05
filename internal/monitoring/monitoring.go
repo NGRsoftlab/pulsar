@@ -34,7 +34,7 @@ func (m *MonitorImp) Start(ctx context.Context) {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
-	m.logger.Info("📊 Monitor запущен: интервал %v", m.interval)
+	m.logger.Info("Monitor запущен: интервал %v", m.interval)
 
 	for {
 		select {
@@ -42,12 +42,12 @@ func (m *MonitorImp) Start(ctx context.Context) {
 			m.logger.Info("%s", m.metrics.String())
 
 		case <-ctx.Done():
-			m.logger.Info("📊 Monitor остановлен")
+			m.logger.Info("Monitor остановлен")
 			m.printFinalStats()
 			return
 
 		case <-m.stopChan:
-			m.logger.Info("📊 Monitor остановлен (stop signal)")
+			m.logger.Info("Monitor остановлен (stop signal)")
 			m.printFinalStats()
 			return
 		}

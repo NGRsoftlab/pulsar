@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/cmd/app"
 	"github.com/nashabanov/ueba-event-generator/internal/cli"
 	"github.com/nashabanov/ueba-event-generator/internal/config"
+	"github.com/nashabanov/ueba-event-generator/internal/lifecycle"
 	"github.com/nashabanov/ueba-event-generator/internal/logger"
 	"github.com/nashabanov/ueba-event-generator/internal/monitoring"
 	"github.com/nashabanov/ueba-event-generator/internal/pipeline/factory"
@@ -70,9 +70,9 @@ func run() error {
 	monitoring := monitoring.NewMonitor(10*time.Second, log)
 
 	// Создаем и запускаем приложение
-	app := app.NewApplication(cfg, pipeline, monitoring, log)
+	manager := lifecycle.NewManager(pipeline, monitoring, log)
 
-	if err := app.Run(); err != nil {
+	if err := manager.Run(cfg.Generator.Duration); err != nil {
 		return fmt.Errorf("application failed: %v", err)
 	}
 
