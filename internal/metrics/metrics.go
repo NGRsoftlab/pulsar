@@ -30,7 +30,7 @@ type PerformanceMetrics struct {
 	// === ВРЕМЕННЫЕ МЕТРИКИ ===
 	startTime          time.Time
 	lastResetTime      time.Time
-	lastEpsCalculation time.Time
+	lastEpsCalculation int64
 	lastGeneratedCount uint64 // НОВОЕ ПОЛЕ для расчета текущего EPS
 
 	// === ПРОИЗВОДИТЕЛЬНОСТЬ ===
@@ -45,10 +45,11 @@ type PerformanceMetrics struct {
 
 func NewPerformanceMetrics() *PerformanceMetrics {
 	now := time.Now()
+	nowNano := time.Now().UnixNano()
 	return &PerformanceMetrics{
 		startTime:          now,
 		lastResetTime:      now,
-		lastEpsCalculation: now,
+		lastEpsCalculation: nowNano,
 		minProcessingTime:  ^uint64(0), // Максимальное значение uint64
 	}
 }
@@ -157,30 +158,31 @@ func (m *PerformanceMetrics) RecordProcessingTime(duration time.Duration) {
 // calculateCurrentEPS рассчитывает EPS за последний период
 func (m *PerformanceMetrics) calculateCurrentEPS() float64 {
 	now := time.Now()
+	nowNano := now.UnixNano()
 
-	// Получаем текущее количество событий
+	// Атомарно загружаем предыдущие значения
+	lastCalcNano := atomic.LoadInt64(&m.lastEpsCalculation)
+	lastCount := atomic.LoadUint64(&m.lastGeneratedCount)
+
 	currentGenerated := atomic.LoadUint64(&m.generatedEvents)
 
-	// Рассчитываем время с последнего измерения
-	duration := now.Sub(m.lastEpsCalculation).Seconds()
-
-	// Если это первый вызов или прошло слишком мало времени
-	if m.lastGeneratedCount == 0 || duration < 1.0 {
-		// Инициализируем базовые значения
-		m.lastGeneratedCount = currentGenerated
-		m.lastEpsCalculation = now
+	// Первый вызов?
+	if lastCount == 0 && lastCalcNano == 0 {
+		atomic.StoreUint64(&m.lastGeneratedCount, currentGenerated)
+		atomic.StoreInt64(&m.lastEpsCalculation, nowNano)
 		return 0.0
 	}
 
-	// Рассчитываем количество событий за период
-	eventsDiff := currentGenerated - m.lastGeneratedCount
+	durationSec := float64(nowNano-lastCalcNano) / 1e9
+	if durationSec < 1.0 {
+		return 0.0
+	}
 
-	// Рассчитываем EPS за текущий период
-	currentEPS := float64(eventsDiff) / duration
+	eventsDiff := currentGenerated - lastCount
+	currentEPS := float64(eventsDiff) / durationSec
 
-	// Обновляем базовые значения для следующего расчета
-	m.lastGeneratedCount = currentGenerated
-	m.lastEpsCalculation = now
+	atomic.StoreUint64(&m.lastGeneratedCount, currentGenerated)
+	atomic.StoreInt64(&m.lastEpsCalculation, nowNano)
 
 	return currentEPS
 }
