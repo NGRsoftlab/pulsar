@@ -236,7 +236,7 @@ func (s *NetworkSendingStage) IsHealthy() (bool, string) {
 
 func (s *NetworkSendingStage) GetOptimizationRecommendations() []string {
 	var recommendations []string
-	_, sent, failed, dropped := s.metrics.GetStats()
+	_, dropped, failed, sent := s.metrics.GetStats()
 
 	if dropped > 0 {
 		dropRate := float64(dropped) / (float64(sent) + float64(failed) + float64(dropped)) * 100.0
@@ -247,7 +247,7 @@ func (s *NetworkSendingStage) GetOptimizationRecommendations() []string {
 	}
 
 	if failed > 0 {
-		failRate := float64(failed) / float64(sent+failed) * 100
+		failRate := float64(failed)/float64(sent) + float64(failed)*100
 		if failRate > 5.0 {
 			recommendations = append(recommendations,
 				fmt.Sprintf("High failure rate (%.1f%%) - check network connectivity", failRate))
