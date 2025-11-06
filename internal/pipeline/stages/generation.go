@@ -6,11 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/config"
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
-	"github.com/nashabanov/ueba-event-generator/internal/workers"
 	"golang.org/x/time/rate"
+
+	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
 )
 
 // EventGenerationJobBatch - пакет событий для WorkerPool
@@ -20,10 +18,16 @@ type EventGenerationJobBatch struct {
 	events []event.Event
 }
 
+func NewEventGenerationJobBatch(capacity int) *EventGenerationJobBatch {
+	return &EventGenerationJobBatch{
+		events: make([]event.Event, 0, capacity),
+	}
+}
+
 // ExecuteBatch выполняет все события в батче
 func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 	if jb == nil {
-		log.Printf("❌ CRITICAL: NetworkSendJobBatch is nil!")
+		log.Printf("❌ CRITICAL: NetworkSendJobBatch  is nil!")
 		return fmt.Errorf("job batch is nil")
 	}
 
@@ -36,19 +40,21 @@ func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 			if jb.stage.packetMode && jb.stage.serializationMode == SerializationModeBinary {
 				data, err := e.ToBinaryNetFlow()
 				if err != nil {
+					jb.stage.metrics.IncrementFailed()
 					continue
 				}
 				serializedData = NewSerializedData(data, e.Type(), e.GetID(), jb.stage.serializationMode)
 			} else {
 				serializedData, err = NewSerializedDataFromEvent(e, jb.stage.serializationMode)
 				if err != nil {
+					jb.stage.metrics.IncrementFailed()
 					continue
 				}
 			}
 
 			select {
 			case jb.out <- serializedData:
-				metrics.GetGlobalMetrics().IncrementGenerated()
+				jb.stage.metrics.IncrementGenerated()
 			case <-context.Background().Done():
 				return context.Canceled
 			}
@@ -66,42 +72,30 @@ func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 
 // EventGenerationStage генерирует события с высокой скоростью
 type EventGenerationStage struct {
-	eventTypes      []event.EventType
-	eventsPerSecond int
-
+	eventType         event.EventType
+	eventsPerSecond   int
 	serializationMode SerializationMode
 	packetMode        bool
-
-	workerPool *workers.WorkerPool
+	workerPool        Pool
+	metrics           MetricsCollector
 }
 
 // NewEventGenerationStage создаёт стадию генерации
-func NewEventGenerationStage(eventsPerSecond int, cfg *config.Config) *EventGenerationStage {
-	queueSize := eventsPerSecond * 2
-	queueSize = max(queueSize, 1000)
-
-	workerPool := workers.NewWorkerPool(0, queueSize, func() workers.JobBatch {
-		return &EventGenerationJobBatch{
-			events: make([]event.Event, 0, 50),
-		}
-	})
-	workerPool.SetPoolType("generation")
-
-	serializationMode := SerializationModeBinary
-	packetMode := false
-	if cfg != nil {
-		if cfg.Generator.SerializationMode == "binary" {
-			serializationMode = SerializationModeBinary
-		}
-		packetMode = cfg.Generator.PacketMode
-	}
-
+func NewEventGenerationStage(
+	eventType event.EventType,
+	eventsPerSecond int,
+	serializationMode SerializationMode,
+	packetMode bool,
+	workerPool Pool,
+	metrics MetricsCollector,
+) *EventGenerationStage {
 	return &EventGenerationStage{
+		eventType:         eventType,
 		eventsPerSecond:   eventsPerSecond,
-		eventTypes:        []event.EventType{event.EventTypeNetflow},
-		workerPool:        workerPool,
 		serializationMode: serializationMode,
 		packetMode:        packetMode,
+		workerPool:        workerPool,
+		metrics:           metrics,
 	}
 }
 
@@ -181,49 +175,26 @@ func (g *EventGenerationStage) Run(ctx context.Context, in <-chan *SerializedDat
 
 // generateEvent создает одно событие Event
 func (g *EventGenerationStage) generateEvent() (event.Event, error) {
-	eventType := g.eventTypes[0]
-
-	switch eventType {
+	switch g.eventType {
 	case event.EventTypeNetflow:
-		evt := event.NewNetflowEvent() // возвращает *NetflowEvent напрямую
-
+		evt := event.NewNetflowEvent()
 		if err := evt.GenerateRandomTrafficData(); err != nil {
 			return nil, fmt.Errorf("failed to generate random traffic data: %w", err)
 		}
-
 		return evt, nil
-
-	case event.EventTypeSyslog:
-		return nil, fmt.Errorf("syslog events are not supported yet")
-
 	default:
-		return nil, fmt.Errorf("unsupported event type: %v", eventType)
+		return nil, fmt.Errorf("unsupported event type: %v", g.eventType)
 	}
 }
 
 // Конфигурационные методы
-func (g *EventGenerationStage) SetEventRate(eventsPerSecond int) error {
-	if eventsPerSecond <= 0 {
-		return fmt.Errorf("events per second must be positive, got: %d", eventsPerSecond)
-	}
-	g.eventsPerSecond = eventsPerSecond
-	return nil
-}
-
-func (g *EventGenerationStage) SetEventTypes(types []event.EventType) error {
-	if len(types) == 0 {
-		return fmt.Errorf("event types cannot be empty")
-	}
-	g.eventTypes = types
-	return nil
-}
 
 func (g *EventGenerationStage) GetGeneratedCount() uint64 {
-	generated, _, _, _ := metrics.GetGlobalMetrics().GetStats()
+	generated, _, _, _ := g.metrics.GetStats()
 	return generated
 }
 
 func (g *EventGenerationStage) GetFailedCount() uint64 {
-	_, _, failed, _ := metrics.GetGlobalMetrics().GetStats()
+	_, _, failed, _ := g.metrics.GetStats()
 	return failed
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/nashabanov/ueba-event-generator/internal/config"
 	"github.com/nashabanov/ueba-event-generator/internal/lifecycle"
 	"github.com/nashabanov/ueba-event-generator/internal/logger"
+	"github.com/nashabanov/ueba-event-generator/internal/metrics"
 	"github.com/nashabanov/ueba-event-generator/internal/monitoring"
 	"github.com/nashabanov/ueba-event-generator/internal/pipeline/factory"
 )
@@ -60,7 +61,7 @@ func run() error {
 	fmt.Println("Next step: create pipeline...")
 
 	// Создаем pipeline
-	factory := factory.NewPipelineFactory(cfg)
+	factory := factory.NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 	pipeline, err := factory.CreatePipeline()
 	if err != nil {
 		return fmt.Errorf("failed to build pipeline: %v", err)

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/nashabanov/ueba-event-generator/internal/types"
 )
 
 type mockJob struct{}
@@ -46,7 +48,7 @@ func TestLockFreeQueue_WaitPop_Cancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	done := make(chan JobBatch, 1)
+	done := make(chan types.JobBatch, 1)
 	go func() {
 		job := q.WaitPop(ctx)
 		done <- job
@@ -68,7 +70,7 @@ func TestLockFreeQueue_WaitPop_WakeOnPush(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	done := make(chan JobBatch, 1)
+	done := make(chan types.JobBatch, 1)
 	go func() {
 		job := q.WaitPop(ctx)
 		done <- job

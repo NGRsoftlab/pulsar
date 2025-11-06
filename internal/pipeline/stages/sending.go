@@ -8,9 +8,6 @@ import (
 	"time"
 
 	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
-	"github.com/nashabanov/ueba-event-generator/internal/network"
-	"github.com/nashabanov/ueba-event-generator/internal/workers"
 )
 
 type Sender interface {
@@ -36,31 +33,23 @@ type NetworkSendingStage struct {
 	timeout      time.Duration
 
 	sender     Sender
-	workerPool *workers.WorkerPool
-	metrics    *metrics.PerformanceMetrics
+	workerPool Pool
+	metrics    MetricsCollector
 	input      chan event.Event
 }
 
-func NewNetworkSendingStage() *NetworkSendingStage {
-	sender, err := network.NewUDPSender("127.0.0.1:514", 5*time.Second)
-	if err != nil {
-		log.Fatalf("❌ Failed to create default UDP sender: %v", err)
-	}
-
-	workerPool := workers.NewWorkerPool(0, 5000, func() workers.JobBatch {
-		return &NetworkSendJobBatch{
-			data: make([]*SerializedData, 0, 50),
-		}
-	})
-	workerPool.SetPoolType("network")
-
+func NewNetworkSendingStage(
+	metrics MetricsCollector,
+	workerPool Pool,
+	sender Sender,
+) *NetworkSendingStage {
 	return &NetworkSendingStage{
 		destinations: []string{"127.0.0.1:514"},
 		protocol:     "udp",
 		timeout:      5 * time.Second,
 		sender:       sender,
 		workerPool:   workerPool,
-		metrics:      metrics.NewPerformanceMetrics(),
+		metrics:      metrics,
 		input:        make(chan event.Event, 1000),
 	}
 }
@@ -68,6 +57,12 @@ func NewNetworkSendingStage() *NetworkSendingStage {
 type NetworkSendJobBatch struct {
 	stage *NetworkSendingStage
 	data  []*SerializedData
+}
+
+func NewNetworkSendJobBatch(capacity int) *NetworkSendJobBatch {
+	return &NetworkSendJobBatch{
+		data: make([]*SerializedData, 0, capacity),
+	}
 }
 
 func (jb *NetworkSendJobBatch) ExecuteBatch() error {
@@ -126,7 +121,7 @@ func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData
 
 			if len(currentBatch.data) >= batchSize {
 				if !s.workerPool.Submit(currentBatch) {
-					metrics.GetGlobalMetrics().IncrementDropped()
+					s.metrics.IncrementDropped()
 				}
 				currentBatch = nil
 				if timer != nil {
@@ -139,7 +134,7 @@ func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData
 		case <-timerC:
 			if currentBatch != nil && len(currentBatch.data) > 0 {
 				if !s.workerPool.Submit(currentBatch) {
-					metrics.GetGlobalMetrics().IncrementDropped()
+					s.metrics.IncrementDropped()
 				}
 				currentBatch = nil
 			}
@@ -155,24 +150,19 @@ func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData
 	}
 }
 
-// SendData — теперь делегирует всё sender'у
 func (s *NetworkSendingStage) SendData(data *SerializedData) error {
 	destination := data.Destination
 	if destination == "" && len(s.destinations) > 0 {
 		destination = s.destinations[0]
 	}
 
-	// Протокол теперь фиксирован на этапе (sender знает свой протокол)
-	// Если нужно динамическое переключение — sender должен поддерживать мульти-протокол,
-	// но пока оставляем как есть (как в оригинале)
-
 	err := s.sender.Send(destination, data.Data)
 	if err != nil {
-		metrics.GetGlobalMetrics().IncrementFailed()
+		s.metrics.IncrementFailed()
 		return err
 	}
 
-	metrics.GetGlobalMetrics().IncrementSent()
+	s.metrics.IncrementSent()
 	return nil
 }
 
@@ -180,54 +170,21 @@ func (s *NetworkSendingStage) SetDestinations(destinations []string) error {
 	if len(destinations) == 0 {
 		return fmt.Errorf("destinations cannot be empty")
 	}
-
 	for _, dest := range destinations {
 		if _, _, err := net.SplitHostPort(dest); err != nil {
-			return fmt.Errorf("invalid destination address %s: %w", dest, err)
+			return fmt.Errorf("invalid destination %s: %w", dest, err)
 		}
 	}
-
-	newSender, err := s.createSender(destinations[0])
-	if err != nil {
-		return err
-	}
-
-	s.sender.Close()
-	s.sender = newSender
 	s.destinations = destinations
 	return nil
 }
 
 func (s *NetworkSendingStage) SetProtocol(protocol string) error {
 	if protocol != "udp" && protocol != "tcp" {
-		return fmt.Errorf("unsupported protocol: %s (supported: udp, tcp)", protocol)
+		return fmt.Errorf("unsupported protocol: %s", protocol)
 	}
-
-	if s.protocol == protocol {
-		return nil
-	}
-
-	newSender, err := s.createSender(s.destinations[0])
-	if err != nil {
-		return err
-	}
-
-	s.sender.Close()
-	s.sender = newSender
 	s.protocol = protocol
-	log.Printf("🔄 Protocol changed to %s", protocol)
 	return nil
-}
-
-func (s *NetworkSendingStage) createSender(dest string) (Sender, error) {
-	switch s.protocol {
-	case "udp":
-		return network.NewUDPSender(dest, s.timeout)
-	case "tcp":
-		return network.NewTCPSender(dest, 12, s.timeout)
-	default:
-		return nil, fmt.Errorf("unknown protocol: %s", s.protocol)
-	}
 }
 
 // ResizeConnectionPool и RecreateUnhealthyConnections
@@ -246,17 +203,17 @@ func (s *NetworkSendingStage) RecreateUnhealthyConnections() int {
 }
 
 func (s *NetworkSendingStage) GetSentCount() uint64 {
-	_, sent, _, _ := metrics.GetGlobalMetrics().GetStats()
+	_, sent, _, _ := s.metrics.GetStats()
 	return sent
 }
 
 func (s *NetworkSendingStage) GetFailedCount() uint64 {
-	_, _, failed, _ := metrics.GetGlobalMetrics().GetStats()
+	_, _, failed, _ := s.metrics.GetStats()
 	return failed
 }
 
 func (s *NetworkSendingStage) GetStageStats() map[string]any {
-	_, sent, failed, dropped := metrics.GetGlobalMetrics().GetStats()
+	_, sent, failed, dropped := s.metrics.GetStats()
 
 	stats := map[string]any{
 		"protocol":            s.protocol,
@@ -279,7 +236,7 @@ func (s *NetworkSendingStage) IsHealthy() (bool, string) {
 
 func (s *NetworkSendingStage) GetOptimizationRecommendations() []string {
 	var recommendations []string
-	_, sent, failed, dropped := metrics.GetGlobalMetrics().GetStats()
+	_, sent, failed, dropped := s.metrics.GetStats()
 
 	if dropped > 0 {
 		dropRate := float64(dropped) / (float64(sent) + float64(failed) + float64(dropped)) * 100.0

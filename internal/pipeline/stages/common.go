@@ -4,7 +4,10 @@
 package stages
 
 import (
+	"context"
 	"time"
+
+	"github.com/nashabanov/ueba-event-generator/internal/types"
 )
 
 // StageConfig базовая конфигурация для всех стадий
@@ -20,4 +23,19 @@ type StageMetrics struct {
 	ProcessedEvents uint64    `json:"processed_events"`
 	ErrorCount      uint64    `json:"error_count"`
 	LastActivity    time.Time `json:"last_activity"`
+}
+
+type MetricsCollector interface {
+	IncrementGenerated()
+	IncrementSent()
+	IncrementFailed()
+	IncrementDropped()
+	GetStats() (generated, sent, failed uint64, dropped float64)
+}
+
+type Pool interface {
+	Start(ctx context.Context)
+	Stop()
+	Submit(job types.JobBatch) bool
+	GetJob() types.JobBatch
 }

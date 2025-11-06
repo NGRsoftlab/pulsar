@@ -4,20 +4,26 @@ package factory
 
 import (
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/nashabanov/ueba-event-generator/internal/config"
 	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
+	"github.com/nashabanov/ueba-event-generator/internal/network"
 	"github.com/nashabanov/ueba-event-generator/internal/pipeline/coordinator"
 	"github.com/nashabanov/ueba-event-generator/internal/pipeline/stages"
+	"github.com/nashabanov/ueba-event-generator/internal/types"
+	"github.com/nashabanov/ueba-event-generator/internal/workers"
 )
 
 type PipelineFactory struct {
-	cfg *config.Config
+	cfg     *config.Config
+	metrics stages.MetricsCollector
 }
 
-func NewPipelineFactory(cfg *config.Config) *PipelineFactory {
-	return &PipelineFactory{cfg: cfg}
+func NewPipelineFactory(cfg *config.Config, metrics stages.MetricsCollector) *PipelineFactory {
+	return &PipelineFactory{cfg: cfg, metrics: metrics}
 }
 
 func (f *PipelineFactory) calculateBufferSize() int {
@@ -58,24 +64,75 @@ func (f *PipelineFactory) CreatePipeline() (coordinator.Pipeline, error) {
 }
 
 func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
-	genStage := stages.NewEventGenerationStage(
-		f.cfg.Generator.EventsPerSecond,
-		f.cfg)
-
-	eventTypes, err := f.ParseEventTypes()
+	// 1. Обрабатываем конфигурацию НА УРОВНЕ ФАБРИКИ
+	eventType, err := f.parseSingleEventType()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse event types: %w", err)
+		return nil, err
 	}
 
-	if err := genStage.SetEventTypes(eventTypes); err != nil {
-		return nil, fmt.Errorf("failed to set event types: %w", err)
+	packetMode := f.cfg.Generator.PacketMode
+
+	// 2. Создаём пул воркеров
+	queueSize := max(f.cfg.Generator.EventsPerSecond*2, 1000)
+	workerPool := workers.NewWorkerPool(0, queueSize, func() types.JobBatch {
+		return stages.NewEventGenerationJobBatch(50)
+	}, f.metrics.(workers.WorkerMetrics))
+	workerPool.SetPoolType("generation")
+
+	// 3. Создаём этап с ЧИСТЫМ ИНТЕРФЕЙСОМ
+	return stages.NewEventGenerationStage(
+		eventType,
+		f.cfg.Generator.EventsPerSecond,
+		stages.SerializationModeBinary,
+		packetMode,
+		workerPool,
+		f.metrics,
+	), nil
+}
+
+func (f *PipelineFactory) parseSingleEventType() (event.EventType, error) {
+	if len(f.cfg.Generator.EventTypes) == 0 {
+		return 0, fmt.Errorf("at least one event type required")
 	}
 
-	return genStage, nil
+	if len(f.cfg.Generator.EventTypes) > 1 {
+		log.Printf("⚠️ Multiple event types configured, using first: %s",
+			f.cfg.Generator.EventTypes[0])
+	}
+
+	switch strings.ToLower(f.cfg.Generator.EventTypes[0]) {
+	case "netflow":
+		return event.EventTypeNetflow, nil
+	case "syslog":
+		return 0, fmt.Errorf("syslog events not implemented")
+	default:
+		return 0, fmt.Errorf("unsupported event type: %s", f.cfg.Generator.EventTypes[0])
+	}
 }
 
 func (f *PipelineFactory) createSendingStage() (coordinator.Stage, error) {
-	sendStage := stages.NewNetworkSendingStage()
+	if len(f.cfg.Sender.Destinations) == 0 {
+		return nil, fmt.Errorf("destinations cannot be empty")
+	}
+
+	sender, err := f.createSender(f.cfg.Sender.Destinations[0], f.cfg.Sender.Protocol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sender: %w", err)
+	}
+
+	wm := f.metrics.(workers.WorkerMetrics)
+
+	workerPool := workers.NewWorkerPool(
+		0,
+		5000,
+		func() types.JobBatch {
+			return stages.NewNetworkSendJobBatch(50)
+		},
+		wm,
+	)
+	workerPool.SetPoolType("network")
+
+	sendStage := stages.NewNetworkSendingStage(f.metrics, workerPool, sender)
 
 	if err := sendStage.SetDestinations(f.cfg.Sender.Destinations); err != nil {
 		return nil, fmt.Errorf("failed to set destinations: %w", err)
@@ -86,6 +143,18 @@ func (f *PipelineFactory) createSendingStage() (coordinator.Stage, error) {
 	}
 
 	return sendStage, nil
+}
+
+func (f *PipelineFactory) createSender(dest, protocol string) (stages.Sender, error) {
+	timeout := 5 * time.Second
+	switch strings.ToLower(protocol) {
+	case "udp":
+		return network.NewUDPSender(dest, timeout)
+	case "tcp":
+		return network.NewTCPSender(dest, 12, timeout)
+	default:
+		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
+	}
 }
 
 func (f *PipelineFactory) ParseEventTypes() ([]event.EventType, error) {

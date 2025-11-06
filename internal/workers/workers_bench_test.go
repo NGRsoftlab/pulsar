@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/nashabanov/ueba-event-generator/internal/types"
 )
 
 // ===== ОЧЕРЕДЬ =====
@@ -41,7 +43,7 @@ func BenchmarkLockFreeQueue_Concurrent(b *testing.B) {
 // ===== WORKERPOOL =====
 
 func BenchmarkWorkerPool_Submit(b *testing.B) {
-	wp := NewWorkerPool(8, 1024, func() JobBatch { return &mockJob{} })
+	wp := NewWorkerPool(8, 1024, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
 	ctx, cancel := context.WithCancel(context.Background())
 	wp.Start(ctx)
 	defer func() {
@@ -58,7 +60,7 @@ func BenchmarkWorkerPool_Submit(b *testing.B) {
 }
 
 func BenchmarkWorkerPool_Throughput(b *testing.B) {
-	wp := NewWorkerPool(8, 1024, func() JobBatch { return &mockJob{} })
+	wp := NewWorkerPool(8, 1024, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
 	ctx, cancel := context.WithCancel(context.Background())
 	wp.Start(ctx)
 	defer func() {
@@ -83,7 +85,7 @@ func BenchmarkWorkerPool_Throughput(b *testing.B) {
 }
 
 func BenchmarkWorkerPool_HighContention(b *testing.B) {
-	wp := NewWorkerPool(2, 256, func() JobBatch { return &mockJob{} })
+	wp := NewWorkerPool(2, 256, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
 	ctx, cancel := context.WithCancel(context.Background())
 	wp.Start(ctx)
 	defer func() {

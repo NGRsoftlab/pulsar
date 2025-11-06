@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/nashabanov/ueba-event-generator/internal/config"
+	"github.com/nashabanov/ueba-event-generator/internal/metrics"
 )
 
 func TestPipelineFactory_ParseEventTypes(t *testing.T) {
@@ -48,7 +49,7 @@ func TestPipelineFactory_ParseEventTypes(t *testing.T) {
 					EventTypes: tt.eventTypes,
 				},
 			}
-			factory := NewPipelineFactory(cfg)
+			factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 			_, err := factory.ParseEventTypes()
 
@@ -69,7 +70,7 @@ func TestPipelineFactory_createGenerationStage(t *testing.T) {
 				EventTypes:      []string{"netflow"},
 			},
 		}
-		factory := NewPipelineFactory(cfg)
+		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 		stage, err := factory.createGenerationStage()
 		assert.NoError(t, err)
@@ -82,7 +83,7 @@ func TestPipelineFactory_createGenerationStage(t *testing.T) {
 				EventTypes:      []string{"syslog"},
 			},
 		}
-		factory := NewPipelineFactory(cfg)
+		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 		_, err := factory.createGenerationStage()
 		assert.Error(t, err)
@@ -98,7 +99,7 @@ func TestPipelineFactory_createSendingStage(t *testing.T) {
 				Protocol:     "udp",
 			},
 		}
-		factory := NewPipelineFactory(cfg)
+		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 		stage, err := factory.createSendingStage()
 		assert.NoError(t, err)
@@ -111,7 +112,7 @@ func TestPipelineFactory_createSendingStage(t *testing.T) {
 				Protocol:     "tcp",
 			},
 		}
-		factory := NewPipelineFactory(cfg)
+		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 		stage, err := factory.createSendingStage()
 		assert.Error(t, err)
@@ -148,7 +149,7 @@ func TestPipelineFactory_bufferSizeCalculation(t *testing.T) {
 					Protocol:     "udp",
 				},
 			}
-			factory := NewPipelineFactory(cfg)
+			factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 			pipeline, err := factory.CreatePipeline()
 			assert.NoError(t, err)
@@ -173,7 +174,7 @@ func TestPipelineFactory_CreatePipeline(t *testing.T) {
 			},
 		}
 
-		factory := NewPipelineFactory(cfg)
+		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 		pipeline, err := factory.CreatePipeline()
 
 		assert.NoError(t, err)
@@ -187,7 +188,7 @@ func TestPipelineFactory_CreatePipeline(t *testing.T) {
 			},
 		}
 
-		factory := NewPipelineFactory(cfg)
+		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 		_, err := factory.CreatePipeline()
 
 		assert.Error(t, err)
@@ -258,7 +259,7 @@ func TestPipelineFactory_calculateBufferSize(t *testing.T) {
 					EventsPerSecond: tt.eventsPerSecond,
 				},
 			}
-			factory := NewPipelineFactory(cfg)
+			factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
 			actual := factory.calculateBufferSize()
 

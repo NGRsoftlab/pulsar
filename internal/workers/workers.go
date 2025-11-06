@@ -8,20 +8,24 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
+	"github.com/nashabanov/ueba-event-generator/internal/types"
 )
 
-// JobBatch — интерфейс для пакетной обработки задач
-type JobBatch interface {
-	ExecuteBatch() error
+type WorkerMetrics interface {
+	IncrementActiveWorkers()
+	DecrementActiveWorkers()
+	IncrementCompletedJobs()
+	IncrementRejectedJobs()
+	SetQueuedJobs(count uint64)
+	RecordProcessingTime(duration time.Duration)
 }
 
 // LockFreeQueue использует sync/atomic.Value для безопасного доступа к буферу
 // Это избегает race condition, которую видит race detector
 type LockFreeQueue struct {
-	// Массив хранит слайсы с JobBatch для минимизации конкуренции
+	// Массив хранит слайсы с types.JobBatch для минимизации конкуренции
 	// Вместо прямого доступа к buffer[index], используем atomic.Value
-	buffer     []atomic.Value // каждый элемент - atomic.Value с *JobBatch
+	buffer     []atomic.Value // каждый элемент - atomic.Value с *types.JobBatch
 	size       uint64
 	head       atomic.Uint64
 	tail       atomic.Uint64
@@ -39,7 +43,7 @@ func NewLockFreeQueue(capacity int) *LockFreeQueue {
 }
 
 // TryPush попытается поместить задачу в очередь
-func (q *LockFreeQueue) TryPush(job JobBatch) bool {
+func (q *LockFreeQueue) TryPush(job types.JobBatch) bool {
 	if job == nil {
 		return false
 	}
@@ -68,7 +72,7 @@ func (q *LockFreeQueue) TryPush(job JobBatch) bool {
 }
 
 // TryPop попытается достать задачу из очереди без ожидания
-func (q *LockFreeQueue) TryPop() JobBatch {
+func (q *LockFreeQueue) TryPop() types.JobBatch {
 	for {
 		head := q.head.Load()
 		tail := q.tail.Load()
@@ -85,14 +89,14 @@ func (q *LockFreeQueue) TryPop() JobBatch {
 		jobVal := q.buffer[idx].Load()
 
 		if jobVal != nil {
-			return jobVal.(JobBatch)
+			return jobVal.(types.JobBatch)
 		}
 		return nil
 	}
 }
 
 // WaitPop ждёт элемента с контекстом
-func (q *LockFreeQueue) WaitPop(ctx context.Context) JobBatch {
+func (q *LockFreeQueue) WaitPop(ctx context.Context) types.JobBatch {
 	for {
 		job := q.TryPop()
 		if job != nil {
@@ -110,17 +114,18 @@ func (q *LockFreeQueue) WaitPop(ctx context.Context) JobBatch {
 // WorkerPool управляет пулом воркеров с lock-free очередью
 type WorkerPool struct {
 	workerCount int
+	metrics     WorkerMetrics
 	queue       *LockFreeQueue
 	quit        atomic.Bool
 	wg          sync.WaitGroup
 	poolType    string
-	newJobFunc  func() JobBatch
+	newJobFunc  func() types.JobBatch
 	metricsChan chan func()
 	started     atomic.Bool
 }
 
 // NewWorkerPool создаёт пул с пользовательской фабрикой задач
-func NewWorkerPool(workerCount, queueSize int, newJobFunc func() JobBatch) *WorkerPool {
+func NewWorkerPool(workerCount, queueSize int, newJobFunc func() types.JobBatch, metrics WorkerMetrics) *WorkerPool {
 	if workerCount <= 0 {
 		workerCount = runtime.NumCPU() * 2
 	}
@@ -130,6 +135,7 @@ func NewWorkerPool(workerCount, queueSize int, newJobFunc func() JobBatch) *Work
 		queue:       NewLockFreeQueue(queueSize),
 		newJobFunc:  newJobFunc,
 		metricsChan: make(chan func(), 1000),
+		metrics:     metrics,
 	}
 
 	return wp
@@ -157,9 +163,8 @@ func (wp *WorkerPool) Start(ctx context.Context) {
 // worker — рабочая горутина
 func (wp *WorkerPool) worker(ctx context.Context) {
 	defer wp.wg.Done()
-	globalMetrics := metrics.GetGlobalMetrics()
-	globalMetrics.IncrementActiveWorkers()
-	defer globalMetrics.DecrementActiveWorkers()
+	wp.metrics.IncrementActiveWorkers()
+	defer wp.metrics.DecrementActiveWorkers()
 
 	localCompleted := uint64(0)
 
@@ -193,8 +198,8 @@ func (wp *WorkerPool) worker(ctx context.Context) {
 		if localCompleted%100 == 0 {
 			duration := time.Since(start)
 			wp.metricsChan <- func() {
-				globalMetrics.IncrementCompletedJobs()
-				globalMetrics.RecordProcessingTime(duration)
+				wp.metrics.IncrementCompletedJobs()
+				wp.metrics.RecordProcessingTime(duration)
 			}
 			localCompleted = 0
 		}
@@ -204,19 +209,17 @@ func (wp *WorkerPool) worker(ctx context.Context) {
 }
 
 // Submit отправляет задачу в очередь
-func (wp *WorkerPool) Submit(job JobBatch) bool {
-	globalMetrics := metrics.GetGlobalMetrics()
-
+func (wp *WorkerPool) Submit(job types.JobBatch) bool {
 	if job == nil {
 		wp.metricsChan <- func() {
-			globalMetrics.IncrementRejectedJobs()
+			wp.metrics.IncrementRejectedJobs()
 		}
 		return false
 	}
 
 	if wp.quit.Load() {
 		wp.metricsChan <- func() {
-			globalMetrics.IncrementRejectedJobs()
+			wp.metrics.IncrementRejectedJobs()
 		}
 		return false
 	}
@@ -225,13 +228,13 @@ func (wp *WorkerPool) Submit(job JobBatch) bool {
 		wp.metricsChan <- func() {
 			head := wp.queue.head.Load()
 			tail := wp.queue.tail.Load()
-			globalMetrics.SetQueuedJobs(tail - head)
+			wp.metrics.SetQueuedJobs(tail - head)
 		}
 		return true
 	}
 
 	wp.metricsChan <- func() {
-		globalMetrics.IncrementRejectedJobs()
+		wp.metrics.IncrementRejectedJobs()
 	}
 	return false
 }
@@ -245,7 +248,7 @@ func (wp *WorkerPool) Stop() {
 }
 
 // GetJob возвращает новую задачу от фабрики
-func (wp *WorkerPool) GetJob() JobBatch {
+func (wp *WorkerPool) GetJob() types.JobBatch {
 	return wp.newJobFunc()
 }
 
