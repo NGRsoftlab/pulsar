@@ -104,7 +104,7 @@ func (f *PipelineFactory) parseSingleEventType() (event.EventType, error) {
 	case "netflow":
 		return event.EventTypeNetflow, nil
 	case "syslog":
-		return 0, fmt.Errorf("syslog events not implemented")
+		return 0, fmt.Errorf("syslog events are not supported yet")
 	default:
 		return 0, fmt.Errorf("unsupported event type: %s", f.cfg.Generator.EventTypes[0])
 	}
