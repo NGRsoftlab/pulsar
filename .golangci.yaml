@@ -7,7 +7,6 @@ run:
 linters:
   enable:
     - bodyclose
-    - deadcode
     - errcheck
     - gosimple
     - govet
@@ -26,7 +25,7 @@ linters:
     - lll
 
 linters-setting:
-  govent:
+  govet:
     check-shadowing: truegocyclo
   gocyclo:
     min-complexity: 15
@@ -36,14 +35,12 @@ linters-setting:
 formatters:
   enable:
     - goimports
-    - golines
 
 issues:
-  max-sama-issue: 0
+  max-same-issue: 0
   exclude-rules:
     - path: _test\.go
       linters:
-        - funlen
         - dupl
         - gomnd
         - errcheck

@@ -30,4 +30,3 @@ repos:
         args: ['-v', './...']
         files: '\.go$'
         pass_filenames: false
-        stages: [manual] # удалить после фикса всех тестов
