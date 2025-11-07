@@ -63,7 +63,10 @@ type Flags struct {
 
 // ApplyFlags применяет флаги командной строки (переопределяют все остальное)
 func (l *Loader) ApplyFlags(flags *Flags) {
-	if flags.Rate > 0 {
+	if flags == nil {
+		return
+	}
+	if flags.Rate != 0 { // или даже if true, если Rate всегда задан
 		l.config.Generator.EventsPerSecond = flags.Rate
 	}
 
@@ -75,7 +78,7 @@ func (l *Loader) ApplyFlags(flags *Flags) {
 		l.config.Sender.Protocol = flags.Protocol
 	}
 
-	if flags.BufferSize > 0 {
+	if flags.BufferSize != 0 {
 		l.config.Pipeline.BufferSize = flags.BufferSize
 	}
 
@@ -83,7 +86,7 @@ func (l *Loader) ApplyFlags(flags *Flags) {
 		l.config.Logging.Level = flags.LogLevel
 	}
 
-	if flags.Duration > 0 {
+	if flags.Duration != 0 {
 		l.config.Generator.Duration = flags.Duration
 	}
 }

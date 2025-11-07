@@ -189,7 +189,6 @@ func (m *PerformanceMetrics) calculateCurrentEPS() float64 {
 
 // === МЕТОДЫ ПОЛУЧЕНИЯ СТАТИСТИКИ ===
 
-// GetStats возвращает основные метрики (совместимость с твоим кодом)
 func (m *PerformanceMetrics) GetStats() (generated, sent, failed uint64, eps float64) {
 	generated = atomic.LoadUint64(&m.generatedEvents)
 	sent = atomic.LoadUint64(&m.sentEvents)

@@ -1,0 +1,20 @@
+generator:
+  events_per_second: 1000
+  duration: 5s
+  event_types: ["netflow"]
+  serialization_mode: "json"
+  packet_mode: false
+
+sender:
+  protocol: tcp
+  destinations: ["127.0.0.1:514"]
+  retries: 3
+  timeout: 1s
+
+pipeline:
+  buffer_size: 1024
+
+logging:
+  level: info
+  format: text
+  file: ""
