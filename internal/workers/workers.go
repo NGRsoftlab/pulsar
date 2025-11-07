@@ -25,12 +25,11 @@ type WorkerMetrics interface {
 type LockFreeQueue struct {
 	// Массив хранит слайсы с types.JobBatch для минимизации конкуренции
 	// Вместо прямого доступа к buffer[index], используем atomic.Value
-	buffer     []atomic.Value // каждый элемент - atomic.Value с *types.JobBatch
-	size       uint64
-	head       atomic.Uint64
-	tail       atomic.Uint64
-	notify     chan struct{}
-	elementsWg sync.WaitGroup // для graceful shutdown
+	buffer []atomic.Value // каждый элемент - atomic.Value с *types.JobBatch
+	size   uint64
+	head   atomic.Uint64
+	tail   atomic.Uint64
+	notify chan struct{}
 }
 
 func NewLockFreeQueue(capacity int) *LockFreeQueue {
