@@ -1,208 +1,196 @@
+// syslog_palo_alto_event.go
+
 package event
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
+	"math/rand"
 	"net/netip"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// SyslogEvent представляет Syslog событие (PaloAlto format)
-type SyslogEvent struct {
-	// Основные поля события
-	ID             string    `json:"-"`       // Внутренний ID
-	EventTimestamp time.Time `json:"-"`       // Внутренний timestamp
-	LogTimestamp   time.Time `json:"logtime"` // "2025-04-05 14:30:22"
+// SyslogPaloAltoEvent представляет событие syslog от Palo Alto Networks
+type SyslogPaloAltoEvent struct {
+	rawMessage string
 
-	// Device информация
-	DeviceProduct    string `json:"deviceProduct"`    // "PAN-OS"
-	DeviceVendor     string `json:"deviceVendor"`     // "PaloAlto"
-	DeviceVersion    string `json:"deviceVersion"`    // "10.1.0"
-	DeviceExternalID string `json:"deviceExternalId"` // "serial-7429"
-	DeviceHostName   string `json:"deviceHostName"`   // "palo-4271"
-	Host             string `json:"host"`             // "palo-4271"
-
-	// Network информация
-	SourceAddress       netip.Addr `json:"sourceAddress"`
-	DestinationAddress  netip.Addr `json:"destinationAddress"`
-	DestinationPort     uint16     `json:"destinationPort"`
-	TransportProtocol   string     `json:"transportProtocol"`   // "tcp"
-	ApplicationProtocol string     `json:"applicationProtocol"` // "app-15"
-
-	// Event классификация
-	Name                string `json:"name"`                // "TRAFFIC"
-	EventCategory       string `json:"event_category"`      // "network"
-	EventType           string `json:"event_type"`          // "allowed"
-	EventAction         string `json:"event_action"`        // "allowed"
-	DeviceEventCategory string `json:"deviceEventCategory"` // "TRAFFIC"
-
-	// Traffic статистика
-	Packets    uint32 `json:"Packets,string"`     // "4821"
-	BytesIn    uint64 `json:"bytesIn,string"`     // "745200"
-	BytesOut   uint64 `json:"bytesOut,string"`    // "1254300"
-	TotalBytes uint64 `json:"Total_bytes,string"` // "1999500"
-
-	// Syslog специфичные поля
-	SyslogTimestamp string `json:"syslog_timestamp"` // "Apr 5 14:30:22"
-	SyslogHostname  string `json:"syslog_hostname"`  // "palo-4271"
-
-	// Security поля
-	SessionID       string `json:"SessionID"`        // "8473921"
-	SourceZone      string `json:"Source_Zone"`      // "trust"
-	DestinationZone string `json:"Destination_Zone"` // "untrust"
-	URLCategory     string `json:"URL_Category"`
-	Flags           string `json:"Flags"`
-
-	// Сообщения
-	EventMessage string `json:"event_message"`
-	RawDataField string `json:"raw_data_field"` // Полное сырое сообщение
-
-	// Кэшированный размер
-	cachedSize int
+	id            string
+	timestamp     time.Time
+	sourceIP      netip.Addr
+	destinationIP netip.Addr
+	validationErr error // Кэширование ошибки валидации
 }
 
-// Timestamp implements Event.
-func (e *SyslogEvent) Timestamp() time.Time {
-	panic("unimplemented")
-}
-
-// NewSyslogEvent создает новое Syslog событие
-func NewSyslogEvent() *SyslogEvent {
+// NewSyslogPaloAltoEvent создаёт пустое, но инициализированное событие
+func NewSyslogPaloAltoEvent() *SyslogPaloAltoEvent {
 	now := time.Now()
-	return &SyslogEvent{
-		ID:             generateEventID(),
-		EventTimestamp: now,
-		LogTimestamp:   now,
-		DeviceProduct:  "PAN-OS",
-		DeviceVendor:   "PaloAlto",
-		EventCategory:  "network",
-		cachedSize:     -1,
+	return &SyslogPaloAltoEvent{
+		id:        generateEventID(EventTypeSyslog), // ← важно: передаём тип!
+		timestamp: now,
 	}
 }
 
-// Type возвращает тип события
-func (e *SyslogEvent) Type() EventType {
+// Type реализует Event
+func (e *SyslogPaloAltoEvent) Type() EventType {
 	return EventTypeSyslog
 }
 
-// Timestamp возвращает время события
-func (e *SyslogEvent) GetTimestamp() time.Time {
-	return e.EventTimestamp
+// Timestamp реализует Event
+func (e *SyslogPaloAltoEvent) Timestamp() time.Time {
+	return e.timestamp
 }
 
-// ID возвращает уникальный идентификатор события
-func (e *SyslogEvent) GetID() string {
-	return e.ID
+// Size реализует Event: размер сырого сообщения в байтах
+func (e *SyslogPaloAltoEvent) Size() int {
+	return len(e.rawMessage)
 }
 
-// GetSourceIP возвращает IP источника
-func (e *SyslogEvent) GetSourceIP() netip.Addr {
-	return e.SourceAddress
-}
-
-// GetDestinationIP возвращает IP назначения
-func (e *SyslogEvent) GetDestinationIP() netip.Addr {
-	return e.DestinationAddress
-}
-
-// ToJSON сериализует событие в JSON
-func (e *SyslogEvent) ToJSON() ([]byte, error) {
-	// Создаем копию структуры для кастомной сериализации
-	data := struct {
-		*SyslogEvent
-		SourceAddress      string `json:"sourceAddress"`
-		DestinationAddress string `json:"destinationAddress"`
-		LogTime            string `json:"logtime"`
-	}{
-		SyslogEvent:        e,
-		SourceAddress:      e.SourceAddress.String(),
-		DestinationAddress: e.DestinationAddress.String(),
-		LogTime:            e.LogTimestamp.Format("2006-01-02 15:04:05"), // Custom format
+// Validate реализует Event
+func (e *SyslogPaloAltoEvent) Validate() error {
+	if e.validationErr != nil {
+		return e.validationErr
 	}
-
-	return json.Marshal(data)
-}
-
-// Size вычисляет размер события в байтах
-func (e *SyslogEvent) Size() int {
-	if e.cachedSize == -1 {
-		jsonData, _ := e.ToJSON()
-		e.cachedSize = len(jsonData)
+	if e.rawMessage == "" {
+		return e.cacheError("raw syslog message is empty")
 	}
-	return e.cachedSize
-}
-
-// Validate проверяет корректность Syslog события
-func (e *SyslogEvent) Validate() error {
-	if e.ID == "" {
-		return fmt.Errorf("event ID cannot be empty")
+	if len(e.rawMessage) > 1500 {
+		return e.cacheError("syslog message exceeds MTU (1500 bytes)")
 	}
-
-	if e.EventTimestamp.IsZero() {
-		return fmt.Errorf("event timestamp cannot be zero")
+	if !e.sourceIP.IsValid() {
+		return e.cacheError("invalid source IP")
 	}
-
-	if !e.SourceAddress.IsValid() {
-		return fmt.Errorf("source address is invalid: %v", e.SourceAddress)
+	if !e.destinationIP.IsValid() {
+		return e.cacheError("invalid destination IP")
 	}
-
-	if !e.DestinationAddress.IsValid() {
-		return fmt.Errorf("destination address is invalid: %v", e.DestinationAddress)
-	}
-
-	if e.DeviceVendor == "" {
-		return fmt.Errorf("device vendor cannot be empty")
-	}
-
-	if e.DeviceProduct == "" {
-		return fmt.Errorf("device product cannot be empty")
-	}
-
 	return nil
 }
 
-// SetNetworkData устанавливает сетевые данные события
-func (e *SyslogEvent) SetNetworkData(srcIP, dstIP string, dstPort uint16, protocol string) error {
+// GetID реализует Event
+func (e *SyslogPaloAltoEvent) GetID() string {
+	return e.id
+}
+
+// GetSourceIP реализует Event
+func (e *SyslogPaloAltoEvent) GetSourceIP() netip.Addr {
+	return e.sourceIP
+}
+
+// GetDestinationIP реализует Event
+func (e *SyslogPaloAltoEvent) GetDestinationIP() netip.Addr {
+	return e.destinationIP
+}
+
+// ToRawSyslog возвращает сырое syslog-сообщение
+func (e *SyslogPaloAltoEvent) ToRawSyslog() string {
+	return e.rawMessage
+}
+
+// IsUDPCompatible проверяет, помещается ли сообщение в UDP (MTU 1500 - 28)
+func (e *SyslogPaloAltoEvent) IsUDPCompatible() bool {
+	return len(e.rawMessage) <= 1472
+}
+
+// SetTrafficData устанавливает параметры трафика и генерирует raw-сообщение
+func (e *SyslogPaloAltoEvent) SetTrafficData(
+	srcIP, dstIP string,
+	dstPort uint16,
+	proto string,
+	packets uint32,
+	bytesIn, bytesOut uint64,
+) error {
 	var err error
-
-	e.SourceAddress, err = netip.ParseAddr(srcIP)
+	e.sourceIP, err = netip.ParseAddr(srcIP)
 	if err != nil {
-		return fmt.Errorf("invalid source IP %s: %w", srcIP, err)
+		return fmt.Errorf("invalid source IP: %w", err)
+	}
+	e.destinationIP, err = netip.ParseAddr(dstIP)
+	if err != nil {
+		return fmt.Errorf("invalid destination IP: %w", err)
 	}
 
-	e.DestinationAddress, err = netip.ParseAddr(dstIP)
-	if err != nil {
-		return fmt.Errorf("invalid destination IP %s: %w", dstIP, err)
+	now := time.Now()
+	logTime := now.Format("2006/01/02 15:04:05")
+	syslogTime := formatSyslogTimestamp(now)
+
+	fields := []string{
+		logTime,                    // receive_time
+		"007057000057896",          // serial_number
+		"TRAFFIC",                  // type
+		"end",                      // subtype
+		"1",                        // config_version
+		logTime,                    // time_generated
+		srcIP,                      // src
+		dstIP,                      // dst
+		strconv.Itoa(int(dstPort)), // dst_port
+		"0",                        // rule (default)
+		proto,                      // proto
+		"allow",                    // action
+		// ... остальные поля Palo Alto (упрощённый формат)
+		strconv.FormatUint(uint64(packets), 10),  // packets
+		strconv.FormatUint(bytesIn, 10),          // bytes_sent
+		strconv.FormatUint(bytesOut, 10),         // bytes_received
+		strconv.FormatUint(bytesIn+bytesOut, 10), // total_bytes
 	}
 
-	e.DestinationPort = dstPort
-	e.TransportProtocol = protocol
-
-	// Генерируем сообщение
-	e.EventMessage = fmt.Sprintf("PaloAlto TRAFFIC src=%s dst=%s dport=%d",
-		srcIP, dstIP, dstPort)
-
-	// Сбросить кэш размера
-	e.cachedSize = -1
-
+	e.rawMessage = fmt.Sprintf(
+		"<134>%s palo-device 1,%s",
+		syslogTime,
+		strings.Join(fields, ","),
+	)
+	e.timestamp = now
+	e.validationErr = nil // сброс кэша ошибки
 	return nil
 }
 
-// SetTrafficStats устанавливает статистику трафика
-func (e *SyslogEvent) SetTrafficStats(packets uint32, bytesIn, bytesOut uint64) {
-	e.Packets = packets
-	e.BytesIn = bytesIn
-	e.BytesOut = bytesOut
-	e.TotalBytes = bytesIn + bytesOut
-	e.cachedSize = -1
+// GenerateRandomTrafficData заполняет событие случайными реалистичными данными
+func (e *SyslogPaloAltoEvent) GenerateRandomTrafficData() error {
+	srcIPs := []string{
+		"192.168.1.10", "192.168.1.15", "192.168.1.20",
+		"10.0.1.100", "10.0.1.101", "10.0.2.50",
+		"172.16.0.10", "172.16.0.20",
+	}
+
+	dstIPs := []string{
+		"8.8.8.8", "1.1.1.1", "208.67.222.222",
+		"192.168.1.1", "10.0.1.1",
+		"93.184.216.34", "151.101.193.140",
+	}
+
+	protocols := []string{"tcp", "udp"}
+
+	tcpPorts := []uint16{80, 443, 22, 21, 25, 53, 993, 995, 8080, 8443}
+	udpPorts := []uint16{53, 123, 161, 514, 1194, 4500}
+
+	proto := protocols[rand.Intn(len(protocols))]
+	srcIP := srcIPs[rand.Intn(len(srcIPs))]
+	dstIP := dstIPs[rand.Intn(len(dstIPs))]
+
+	var dstPort uint16
+	if proto == "tcp" {
+		dstPort = tcpPorts[rand.Intn(len(tcpPorts))]
+	} else {
+		dstPort = udpPorts[rand.Intn(len(udpPorts))]
+	}
+
+	// Генерация объёмов трафика
+	packets := uint32(1 + rand.Intn(100))
+	bytesIn := uint64(packets) * (64 + uint64(rand.Intn(1400)))
+	bytesOut := uint64(packets) * (64 + uint64(rand.Intn(1400)))
+
+	return e.SetTrafficData(srcIP, dstIP, dstPort, proto, packets, bytesIn, bytesOut)
 }
 
-// SetDeviceInfo устанавливает информацию об устройстве
-func (e *SyslogEvent) SetDeviceInfo(hostname, version, serialID string) {
-	e.DeviceHostName = hostname
-	e.Host = hostname
-	e.SyslogHostname = hostname
-	e.DeviceVersion = version
-	e.DeviceExternalID = serialID
-	e.cachedSize = -1
+// cacheError кэширует ошибку валидации
+func (e *SyslogPaloAltoEvent) cacheError(msg string) error {
+	e.validationErr = errors.New(msg)
+	return e.validationErr
+}
+
+// formatSyslogTimestamp форматирует время по стандарту syslog (RFC 3164)
+func formatSyslogTimestamp(t time.Time) string {
+	month := t.Month().String()[:3]
+	day := fmt.Sprintf("%2d", t.Day()) // " 5", а не "05"
+	return fmt.Sprintf("%s %s %02d:%02d:%02d", month, day, t.Hour(), t.Minute(), t.Second())
 }

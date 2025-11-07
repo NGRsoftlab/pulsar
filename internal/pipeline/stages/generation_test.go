@@ -130,40 +130,6 @@ func TestEventGenerationJobBatch_ExecuteBatch_Netflow(t *testing.T) {
 	assert.Equal(t, uint64(0), failed)
 }
 
-// Тест ExecuteBatch с неподдерживаемым типом события
-func TestEventGenerationJobBatch_ExecuteBatch_UnsupportedEvent(t *testing.T) {
-	metrics := &mockMetricsCollector{}
-	stage := &EventGenerationStage{
-		serializationMode: SerializationModeBinary,
-		packetMode:        false,
-		metrics:           metrics,
-	}
-
-	out := make(chan *SerializedData, 10)
-
-	unsupportedEvent := &fakeEvent{} // реализует event.Event, но не *NetflowEvent
-	batch := &EventGenerationJobBatch{
-		stage:  stage,
-		out:    out,
-		events: []event.Event{unsupportedEvent},
-	}
-
-	err := batch.ExecuteBatch()
-	require.NoError(t, err)
-	assert.Empty(t, batch.events)
-
-	// Ничего не должно быть отправлено
-	select {
-	case <-out:
-		assert.Fail(t, "unexpected data in output channel")
-	default:
-	}
-
-	generated, _, failed, _ := metrics.GetStats()
-	assert.Equal(t, uint64(0), generated)
-	assert.Equal(t, uint64(0), failed)
-}
-
 // fakeEvent — минимальная реализация event.Event для тестов
 type fakeEvent struct{}
 

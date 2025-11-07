@@ -17,6 +17,7 @@ type Flags struct {
 	Protocol     string
 	LogLevel     string
 	Duration     time.Duration
+	EventsType   string
 }
 
 // Parser инкапсулирует логику парсинга CLI-аргументов.
@@ -49,6 +50,9 @@ func NewParser(version, buildTime string) *Parser {
 
 	fs.StringVar(&flags.Protocol, "protocol", "", "Protocol: tcp or udp")
 	fs.StringVar(&flags.Protocol, "p", "", "Protocol (shorthand)")
+
+	fs.StringVar(&flags.EventsType, "events", "", "EventsType: netflow or syslog")
+	fs.StringVar(&flags.EventsType, "e", "", "EventsType (shorthand)")
 
 	fs.StringVar(&flags.LogLevel, "log-level", "", "Log level: debug, info, warn, error")
 	fs.StringVar(&flags.LogLevel, "l", "", "Log level (shorthand)")
@@ -92,6 +96,7 @@ func (p *Parser) ShowHelpInfo() {
 	fmt.Printf("  -r, --rate N              Events per second\n")
 	fmt.Printf("  -d, --destinations LIST   Comma-separated destinations\n")
 	fmt.Printf("  -p, --protocol PROTO      Protocol: tcp or udp\n")
+	fmt.Printf("  -e, --events TYPE         Events type: netflow or syslog\n")
 	fmt.Printf("  -t, --duration TIME       How long to run (e.g., 30s, 5m, 1h)\n")
 	fmt.Printf("  -l, --log-level LEVEL     Log level: debug, info, warn, error\n")
 	fmt.Printf("  -v, --version             Show version information\n")

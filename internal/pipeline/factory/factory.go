@@ -72,18 +72,29 @@ func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 
 	packetMode := f.cfg.Generator.PacketMode
 
-	// 2. Создаём пул воркеров
+	// 2. Определяем режим рериализации
+	var serializationMode stages.SerializationMode
+	switch eventType {
+	case event.EventTypeNetflow:
+		serializationMode = stages.SerializationModeBinary
+	case event.EventTypeSyslog:
+		serializationMode = stages.SerializationModeRaw
+	default:
+		return nil, fmt.Errorf("unsupported event type for generation: %v", eventType)
+	}
+
+	// 3. Создаём пул воркеров
 	queueSize := max(f.cfg.Generator.EventsPerSecond*2, 1000)
 	workerPool := workers.NewWorkerPool(0, queueSize, func() types.JobBatch {
 		return stages.NewEventGenerationJobBatch(50)
 	}, f.metrics.(workers.WorkerMetrics))
 	workerPool.SetPoolType("generation")
 
-	// 3. Создаём этап с ЧИСТЫМ ИНТЕРФЕЙСОМ
+	// 4. Создаём этап с ЧИСТЫМ ИНТЕРФЕЙСОМ
 	return stages.NewEventGenerationStage(
 		eventType,
 		f.cfg.Generator.EventsPerSecond,
-		stages.SerializationModeBinary,
+		serializationMode,
 		packetMode,
 		workerPool,
 		f.metrics,
@@ -104,7 +115,7 @@ func (f *PipelineFactory) parseSingleEventType() (event.EventType, error) {
 	case "netflow":
 		return event.EventTypeNetflow, nil
 	case "syslog":
-		return 0, fmt.Errorf("syslog events are not supported yet")
+		return event.EventTypeSyslog, nil
 	default:
 		return 0, fmt.Errorf("unsupported event type: %s", f.cfg.Generator.EventTypes[0])
 	}

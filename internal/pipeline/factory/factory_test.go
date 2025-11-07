@@ -63,32 +63,19 @@ func TestPipelineFactory_ParseEventTypes(t *testing.T) {
 }
 
 func TestPipelineFactory_createGenerationStage(t *testing.T) {
-	t.Run("success with netflow", func(t *testing.T) {
-		cfg := &config.Config{
-			Generator: config.GeneratorConfig{
-				EventsPerSecond: 100,
-				EventTypes:      []string{"netflow"},
-			},
-		}
-		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
+	// t.Run("success with netflow", func(t *testing.T) {
+	cfg := &config.Config{
+		Generator: config.GeneratorConfig{
+			EventsPerSecond: 100,
+			EventTypes:      []string{"netflow"},
+		},
+	}
+	factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
 
-		stage, err := factory.createGenerationStage()
-		assert.NoError(t, err)
-		assert.NotNil(t, stage)
-	})
-	t.Run("error with unsupported type", func(t *testing.T) {
-		cfg := &config.Config{
-			Generator: config.GeneratorConfig{
-				EventsPerSecond: 100,
-				EventTypes:      []string{"syslog"},
-			},
-		}
-		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
-
-		_, err := factory.createGenerationStage()
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "syslog events are not supported yet")
-	})
+	stage, err := factory.createGenerationStage()
+	assert.NoError(t, err)
+	assert.NotNil(t, stage)
+	//})
 }
 
 func TestPipelineFactory_createSendingStage(t *testing.T) {
@@ -159,42 +146,27 @@ func TestPipelineFactory_bufferSizeCalculation(t *testing.T) {
 }
 
 func TestPipelineFactory_CreatePipeline(t *testing.T) {
-	t.Run("success with valid config", func(t *testing.T) {
-		cfg := &config.Config{
-			Pipeline: config.PipelineConfig{
-				BufferSize: 0, // авто
-			},
-			Generator: config.GeneratorConfig{
-				EventsPerSecond: 500,
-				EventTypes:      []string{"netflow"},
-			},
-			Sender: config.SenderConfig{
-				Destinations: []string{"localhost:1234"},
-				Protocol:     "udp",
-			},
-		}
+	// t.Run("success with valid config", func(t *testing.T) {
+	cfg := &config.Config{
+		Pipeline: config.PipelineConfig{
+			BufferSize: 0, // авто
+		},
+		Generator: config.GeneratorConfig{
+			EventsPerSecond: 500,
+			EventTypes:      []string{"netflow"},
+		},
+		Sender: config.SenderConfig{
+			Destinations: []string{"localhost:1234"},
+			Protocol:     "udp",
+		},
+	}
 
-		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
-		pipeline, err := factory.CreatePipeline()
+	factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
+	pipeline, err := factory.CreatePipeline()
 
-		assert.NoError(t, err)
-		assert.NotNil(t, pipeline)
-	})
-
-	t.Run("fails when event type unsupported", func(t *testing.T) {
-		cfg := &config.Config{
-			Generator: config.GeneratorConfig{
-				EventTypes: []string{"syslog"},
-			},
-		}
-
-		factory := NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
-		_, err := factory.CreatePipeline()
-
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to create generation stage")
-		assert.Contains(t, err.Error(), "syslog events are not supported yet")
-	})
+	assert.NoError(t, err)
+	assert.NotNil(t, pipeline)
+	//})
 }
 
 func TestPipelineFactory_calculateBufferSize(t *testing.T) {

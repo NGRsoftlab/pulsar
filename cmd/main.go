@@ -98,6 +98,14 @@ func loadConfiguration(flags *cli.Flags) (*config.Config, error) {
 		configFlags.Destinations = parts
 	}
 
+	if flags.EventsType != "" {
+		parts := strings.Split(flags.EventsType, ",")
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		configFlags.EventsType = parts
+	}
+
 	service := config.NewConfigService(flags.ConfigFile, configFlags)
 
 	if err := service.Load(); err != nil {

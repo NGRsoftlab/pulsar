@@ -4,6 +4,8 @@ import (
 	"time"
 )
 
+var nowFunc = time.Now
+
 // NetFlowV5Header представляет заголовок NetFlow v5 пакета (24 байта)
 type NetFlowV5Header struct {
 	Version      uint16 // Версия NetFlow (5)
@@ -19,7 +21,7 @@ type NetFlowV5Header struct {
 
 // NewNetFlowV5Header создает новый заголовок с текущим временем
 func NewNetFlowV5Header(count uint16, sequence uint32) *NetFlowV5Header {
-	now := time.Now()
+	now := nowFunc()
 
 	return &NetFlowV5Header{
 		Version:      5,

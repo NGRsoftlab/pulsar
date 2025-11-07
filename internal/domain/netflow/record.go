@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"math/rand"
 	"net/netip"
-	"time"
 )
 
 // NetFlowV5Record представляет одну flow запись в NetFlow v5 пакете (48 байт)
@@ -65,9 +64,10 @@ func (r *NetFlowV5Record) ToBytes() []byte {
 
 // NewNetFlowV5Record создает новую NetFlow запись из параметров
 func NewNetFlowV5Record(srcIP, dstIP netip.Addr, srcPort, dstPort uint16,
-	protocol uint8, bytes, packets uint32, tcpFlags uint8) *NetFlowV5Record {
-
-	uptime := uint32(time.Since(bootTime).Milliseconds())
+	protocol uint8, bytes, packets uint32, tcpFlags uint8,
+) *NetFlowV5Record {
+	now := nowFunc()
+	uptime := uint32(now.Sub(bootTime).Milliseconds())
 
 	first := uptime - uint32(rand.Intn(1000)) // случайное смещение до 1 сек
 	last := uptime

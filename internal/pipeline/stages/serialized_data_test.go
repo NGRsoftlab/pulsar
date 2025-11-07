@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
+	"github.com/nashabanov/ueba-event-generator/internal/types"
 )
 
 // fakeBinaryEvent — событие, поддерживающее бинарную сериализацию
@@ -43,7 +44,7 @@ func (f *fakeBinaryEvent) ToBinaryNetFlow() ([]byte, error) {
 
 var (
 	_ event.Event              = (*fakeBinaryEvent)(nil)
-	_ event.BinarySerializable = (*fakeBinaryEvent)(nil)
+	_ types.BinarySerializable = (*fakeBinaryEvent)(nil)
 )
 
 // fakeNonBinaryEvent — событие, НЕ поддерживающее бинарную сериализацию
@@ -164,7 +165,7 @@ func (f *errorBinaryEvent) BinarySize() int {
 
 var (
 	_ event.Event              = (*errorBinaryEvent)(nil)
-	_ event.BinarySerializable = (*errorBinaryEvent)(nil)
+	_ types.BinarySerializable = (*errorBinaryEvent)(nil)
 )
 
 func TestSerializedData_Validate_Success(t *testing.T) {

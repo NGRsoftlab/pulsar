@@ -55,6 +55,7 @@ type Flags struct {
 	ConfigFile   string
 	Rate         int
 	Destinations []string
+	EventsType   []string
 	Protocol     string
 	BufferSize   int
 	LogLevel     string
@@ -68,6 +69,10 @@ func (l *Loader) ApplyFlags(flags *Flags) {
 	}
 	if flags.Rate != 0 { // или даже if true, если Rate всегда задан
 		l.config.Generator.EventsPerSecond = flags.Rate
+	}
+
+	if len(flags.EventsType) > 0 {
+		l.config.Generator.EventTypes = flags.EventsType
 	}
 
 	if len(flags.Destinations) > 0 {

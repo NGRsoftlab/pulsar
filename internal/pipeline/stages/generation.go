@@ -27,41 +27,43 @@ func NewEventGenerationJobBatch(capacity int) *EventGenerationJobBatch {
 // ExecuteBatch выполняет все события в батче
 func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 	if jb == nil {
-		log.Printf("❌ CRITICAL: NetworkSendJobBatch  is nil!")
+		log.Printf("❌ CRITICAL: EventGenerationJobBatch is nil!")
 		return fmt.Errorf("job batch is nil")
 	}
 
 	for _, evt := range jb.events {
-		switch e := evt.(type) {
-		case *event.NetflowEvent:
-			var serializedData *SerializedData
-			var err error
+		var serializedData *SerializedData
+		var err error
 
-			if jb.stage.packetMode && jb.stage.serializationMode == SerializationModeBinary {
-				data, err := e.ToBinaryNetFlow()
+		// Для Netflow в binary-режиме — используем специальный метод (опционально)
+		if jb.stage.packetMode && jb.stage.serializationMode == SerializationModeBinary {
+			if netflowEvt, ok := evt.(*event.NetflowEvent); ok {
+				data, err := netflowEvt.ToBinaryNetFlow()
 				if err != nil {
 					jb.stage.metrics.IncrementFailed()
 					continue
 				}
-				serializedData = NewSerializedData(data, e.Type(), e.GetID(), jb.stage.serializationMode)
+				serializedData = NewSerializedData(data, evt.Type(), evt.GetID(), jb.stage.serializationMode)
 			} else {
-				serializedData, err = NewSerializedDataFromEvent(e, jb.stage.serializationMode)
-				if err != nil {
-					jb.stage.metrics.IncrementFailed()
-					continue
-				}
+				// Binary mode не поддерживается для syslog — пропускаем или ошибку?
+				jb.stage.metrics.IncrementFailed()
+				continue
 			}
-
-			select {
-			case jb.out <- serializedData:
-				jb.stage.metrics.IncrementGenerated()
-			case <-context.Background().Done():
-				return context.Canceled
+		} else {
+			// Универсальный путь: raw для syslog, binary/raw для netflow — через интерфейсы
+			serializedData, err = NewSerializedDataFromEvent(evt, jb.stage.serializationMode)
+			if err != nil {
+				log.Printf("Serialization failed for event %s: %v", evt.GetID(), err)
+				jb.stage.metrics.IncrementFailed()
+				continue
 			}
+		}
 
-		default:
-			// пропускаем неподдерживаемые события
-			continue
+		select {
+		case jb.out <- serializedData:
+			jb.stage.metrics.IncrementGenerated()
+		case <-context.Background().Done():
+			return context.Canceled
 		}
 	}
 
@@ -182,6 +184,14 @@ func (g *EventGenerationStage) generateEvent() (event.Event, error) {
 			return nil, fmt.Errorf("failed to generate random traffic data: %w", err)
 		}
 		return evt, nil
+
+	case event.EventTypeSyslog:
+		evt := event.NewSyslogPaloAltoEvent()
+		if err := evt.GenerateRandomTrafficData(); err != nil {
+			return nil, fmt.Errorf("failed to generate random syslog data: %w", err)
+		}
+		return evt, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported event type: %v", g.eventType)
 	}

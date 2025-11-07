@@ -32,7 +32,7 @@ type NetflowEvent struct {
 func NewNetflowEvent() *NetflowEvent {
 	now := time.Now().UTC()
 	return &NetflowEvent{
-		ID:             generateEventID(),
+		ID:             generateEventID(EventTypeNetflow),
 		EventTimestamp: now,
 		LogTimestamp:   now,
 		ObserverType:   "netflow",

@@ -39,19 +39,25 @@ type Event interface {
 	GetDestinationIP() netip.Addr // Получатель трафика
 }
 
-type BinarySerializable interface {
-	Event
-	ToBinaryNetFlow() ([]byte, error) // возвращает бинарное NetFlow представление
-	BinarySize() int                  // размер бинарных данных
-}
-
 // generateEventID генерирует уникальный идентификатор события
-func generateEventID() string {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return fmt.Sprintf("evt_%d", time.Now().UnixNano())
+func generateEventID(eventType EventType) string {
+	// Генерируем 128-битный случайный идентификатор (16 байт)
+	randBytes := make([]byte, 16)
+	if _, err := rand.Read(randBytes); err != nil {
+		// Fallback: безопасный, но менее уникальный ID
+		return fmt.Sprintf("evt_%s_%d", eventType.String(), time.Now().UnixNano())
 	}
-	return "evt_" + hex.EncodeToString(bytes)
+
+	// Префикс по типу события для удобства отладки
+	prefix := "evt"
+	switch eventType {
+	case EventTypeSyslog:
+		prefix = "pal" // или оставить "evt_syslog_..." — по вкусу
+	case EventTypeNetflow:
+		prefix = "nf"
+	}
+
+	return prefix + "_" + hex.EncodeToString(randBytes[:8]) // 8 байт = 16 hex-символов → достаточно для локальной уникальности
 }
 
 // EventFactory создает события на основе типа
@@ -68,7 +74,7 @@ func (f *EventFactory) CreateEvent(eventType EventType) (Event, error) {
 	case EventTypeNetflow:
 		return NewNetflowEvent(), nil
 	case EventTypeSyslog:
-		return NewSyslogEvent(), nil
+		return NewSyslogPaloAltoEvent(), nil
 	default:
 		return nil, fmt.Errorf("unknown event type: %v", eventType)
 	}

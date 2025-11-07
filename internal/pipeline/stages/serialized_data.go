@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
+	"github.com/nashabanov/ueba-event-generator/internal/types"
 )
 
 // SerializedData представляет готовые данные для отправки
@@ -36,19 +37,27 @@ func NewSerializedDataFromEvent(evt event.Event, mode SerializationMode) (*Seria
 	var data []byte
 	var err error
 
-	// Поддерживаем только бинарную сериализацию
-	if mode != SerializationModeBinary {
-		return nil, fmt.Errorf("unsupported serialization mode: %s", mode)
-	}
-
-	// Попытка бинарной сериализации — если событие не поддерживает бинар, возвращаем ошибку (никакого JSON-фолбэка)
-	if bEvt, ok := evt.(event.BinarySerializable); ok {
-		data, err = bEvt.ToBinaryNetFlow()
-		if err != nil {
-			return nil, fmt.Errorf("binary serialization failed: %w", err)
+	switch mode {
+	case SerializationModeBinary:
+		if bEvt, ok := evt.(types.BinarySerializable); ok {
+			data, err = bEvt.ToBinaryNetFlow()
+			if err != nil {
+				return nil, fmt.Errorf("binary serialization failed: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("event type %v does not support binary serialization", evt.Type())
 		}
-	} else {
-		return nil, fmt.Errorf("event type %v does not support binary serialization", evt.Type())
+
+	case SerializationModeRaw:
+		if rEvt, ok := evt.(types.RawSerializable); ok {
+			rawStr := rEvt.ToRawSyslog()
+			data = []byte(rawStr)
+		} else {
+			return nil, fmt.Errorf("event type %s does not support raw serialization", evt.Type())
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported serialization mode: %s", mode)
 	}
 
 	return NewSerializedData(data, evt.Type(), evt.GetID(), mode), nil
@@ -80,5 +89,6 @@ func (sd *SerializedData) String() string {
 type SerializationMode string
 
 const (
-	SerializationModeBinary SerializationMode = "binary"
+	SerializationModeBinary SerializationMode = "binary" // Netflow
+	SerializationModeRaw    SerializationMode = "raw"    // Syslog, CEF
 )
