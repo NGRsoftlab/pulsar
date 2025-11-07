@@ -95,6 +95,7 @@ func (e *SyslogPaloAltoEvent) SetTrafficData(
 	proto string,
 	packets uint32,
 	bytesIn, bytesOut uint64,
+	action, subtype string,
 ) error {
 	var err error
 	e.sourceIP, err = netip.ParseAddr(srcIP)
@@ -112,21 +113,42 @@ func (e *SyslogPaloAltoEvent) SetTrafficData(
 
 	totalBytes := bytesIn + bytesOut
 
-	// CEF Extension (key=value pairs)
+	// ВАЖНО: добавляем deviceEventClassId и deviceAction явно
 	extension := fmt.Sprintf(
-		"rt=%s deviceExternalId=007057000057896 src=%s dst=%s spt=0 dpt=%d "+
-			"proto=%s act=allow "+
-			"flexNumber1Label=Total bytes flexNumber1=%d in=%d out=%d "+
-			"cn2Label=Packets cn2=%d "+
-			"cat=end cs6Label=LogProfile cs6=default",
-		cefTime, srcIP, dstIP, dstPort, proto, totalBytes, bytesIn, bytesOut, packets,
+		"rt=%s "+
+			"deviceExternalId=007057000057896 "+
+			"deviceEventClassId=%s "+ // <-- добавлено
+			"src=%s dst=%s "+
+			"spt=0 dpt=%d "+
+			"proto=%s "+
+			"deviceAction=%s "+ // <-- добавлено
+			"app=web-browsing "+
+			"cs1Label=Rule cs1=allow-all "+
+			"cs4Label=FromZone cs4=trust "+
+			"cs5Label=ToZone cs5=untrust "+
+			"deviceInboundInterface=ethernet1/1 "+
+			"deviceOutboundInterface=ethernet1/2 "+
+			"cn1Label=SessionID cn1=%d "+
+			"cnt=%d "+
+			"in=%d out=%d "+
+			"cn3Label=Packets cn3=%d "+
+			"cs6Label=LogProfile cs6=default",
+		cefTime,
+		subtype, // deviceEventClassId = subtype (end/start/drop/deny)
+		srcIP, dstIP,
+		dstPort,
+		proto,
+		action, // deviceAction = action (allow/drop/deny)
+		now.Unix(),
+		totalBytes,
+		bytesIn, bytesOut,
+		packets,
 	)
 
-	// CEF Header: CEF:Version|Vendor|Product|Version|SignatureID|Name|Severity|Extension
 	e.rawMessage = fmt.Sprintf(
 		"<134>%s palo-device CEF:0|Palo Alto Networks|PAN-OS|10.0.0|%s|TRAFFIC|3|%s",
 		syslogTime,
-		proto, // используем протокол как SignatureID
+		subtype,
 		extension,
 	)
 
@@ -170,7 +192,24 @@ func (e *SyslogPaloAltoEvent) GenerateRandomTrafficData() error {
 	bytesIn := uint64(packets) * (64 + uint64(rand.Intn(1400)))
 	bytesOut := uint64(packets) * (64 + uint64(rand.Intn(1400)))
 
-	return e.SetTrafficData(srcIP, dstIP, dstPort, proto, packets, bytesIn, bytesOut)
+	// Выбор action и subtype
+	actions := []struct {
+		action  string
+		subtype string
+	}{
+		{"allow", "end"},
+		{"allow", "start"},
+		{"deny", "deny"},
+		{"drop", "drop"},
+	}
+	selected := actions[rand.Intn(len(actions))]
+
+	// Модифицируйте SetTrafficData, чтобы принимать action и subtype
+	return e.SetTrafficData(
+		srcIP, dstIP, dstPort, proto,
+		packets, bytesIn, bytesOut,
+		selected.action, selected.subtype,
+	)
 }
 
 // cacheError кэширует ошибку валидации
@@ -182,6 +221,6 @@ func (e *SyslogPaloAltoEvent) cacheError(msg string) error {
 // formatSyslogTimestamp форматирует время по стандарту syslog (RFC 3164)
 func formatSyslogTimestamp(t time.Time) string {
 	month := t.Month().String()[:3]
-	day := fmt.Sprintf("%2d", t.Day()) // " 5", а не "05"
+	day := fmt.Sprintf("%d", t.Day())
 	return fmt.Sprintf("%s %s %02d:%02d:%02d", month, day, t.Hour(), t.Minute(), t.Second())
 }
