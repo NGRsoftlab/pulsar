@@ -39,7 +39,9 @@ func (u *UDPSender) Send(destination string, data []byte) error {
 		return fmt.Errorf("UDP sender supports only single destination: %s", u.remoteAddr)
 	}
 
-	u.conn.SetWriteDeadline(time.Now().Add(u.timeout))
+	if err := u.conn.SetWriteDeadline(time.Now().Add(u.timeout)); err != nil {
+		return fmt.Errorf("UDP deadline set failed: %w", err)
+	}
 	_, err := u.conn.Write(data)
 	if err != nil {
 		return fmt.Errorf("UDP write failde to %s: %w", destination, err)

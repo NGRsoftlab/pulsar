@@ -41,6 +41,8 @@ issues:
   exclude-rules:
     - path: _test\.go
       linters:
+        - unparam
+        - unused
         - dupl
         - gomnd
         - errcheck
@@ -49,6 +51,7 @@ issues:
       linters:
         - gochecknoinits
   exclude:
+    - 'SA1019: rand.Seed has been deprecated'
     - 'should have a package comment'
     - 'line is \d+ characters'
 

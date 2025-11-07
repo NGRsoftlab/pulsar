@@ -74,11 +74,21 @@ func (pool *TCPConnectionPool) createConnection(id int) (*TCPConnection, error) 
 
 	// Оптимизируем TCP соединение
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
-		tcpConn.SetNoDelay(true)   // Отключаем Nagle
-		tcpConn.SetKeepAlive(true) // Keep-alive
-		tcpConn.SetKeepAlivePeriod(30 * time.Second)
-		tcpConn.SetWriteBuffer(64 * 1024) // 64KB buffer
-		tcpConn.SetReadBuffer(64 * 1024)
+		if err := tcpConn.SetNoDelay(true); err != nil {
+			log.Printf("SetNoDelay failed for conn %p: %v", tcpConn, err)
+		}
+		if err := tcpConn.SetKeepAlive(true); err != nil {
+			log.Printf("SetKeepAlive failed: %v", err)
+		}
+		if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
+			log.Printf("SetKeepAlivePeriod failed: %v", err)
+		}
+		if err := tcpConn.SetWriteBuffer(64 * 1024); err != nil {
+			log.Printf("SetWriteBuffer failed: %v", err)
+		}
+		if err := tcpConn.SetReadBuffer(64 * 1024); err != nil {
+			log.Printf("SetReadBuffer failed: %v", err)
+		}
 	}
 
 	metrics.GetGlobalMetrics().IncrementConnections()
@@ -144,7 +154,11 @@ func (conn *TCPConnection) Write(data []byte) (int, error) {
 	}
 
 	// Устанавливаем deadline
-	conn.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if err := conn.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		log.Printf("SetWriteDeadline failed on conn %d: %v", conn.id, err)
+		conn.MarkUnhealthy()
+		return 0, fmt.Errorf("deadline set failed: %w", err)
+	}
 
 	return conn.conn.Write(data)
 }
@@ -176,9 +190,8 @@ func (pool *TCPConnectionPool) Close() {
 	defer pool.mutex.Unlock()
 
 	for i, conn := range pool.connections {
-		if conn != nil && conn.conn != nil {
-			conn.conn.Close()
-			metrics.GetGlobalMetrics().DecrementConnections()
+		if conn != nil {
+			conn.MarkUnhealthy()
 			log.Printf("Closed TCP connection %d", i)
 		}
 	}

@@ -43,7 +43,10 @@ func (t *TCPSender) Send(destination string, data []byte) error {
 	dataWithNewline := append(data, '\n')
 	written := 0
 	for written < len(dataWithNewline) {
-		conn.SetWriteDeadline(time.Now().Add(t.timeout))
+		if err := conn.SetWriteDeadline(time.Now().Add(t.timeout)); err != nil {
+			// Залогировать и, возможно, вернуть ошибку
+			return fmt.Errorf("set deadline: %w", err)
+		}
 		n, err := conn.Write(dataWithNewline[written:])
 		if err != nil {
 			conn.MarkUnhealthy()
