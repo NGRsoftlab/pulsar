@@ -1,5 +1,3 @@
-// syslog_palo_alto_event.go
-
 package event
 
 import (
@@ -7,8 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net/netip"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -92,7 +88,7 @@ func (e *SyslogPaloAltoEvent) IsUDPCompatible() bool {
 	return len(e.rawMessage) <= 1472
 }
 
-// SetTrafficData устанавливает параметры трафика и генерирует raw-сообщение
+// SetTrafficData устанавливает параметры трафика и генерирует cef-сообщение
 func (e *SyslogPaloAltoEvent) SetTrafficData(
 	srcIP, dstIP string,
 	dstPort uint16,
@@ -111,36 +107,31 @@ func (e *SyslogPaloAltoEvent) SetTrafficData(
 	}
 
 	now := time.Now()
-	logTime := now.Format("2006/01/02 15:04:05")
+	cefTime := now.Format("Jan 02 2006 15:04:05")
 	syslogTime := formatSyslogTimestamp(now)
 
-	fields := []string{
-		logTime,                    // receive_time
-		"007057000057896",          // serial_number
-		"TRAFFIC",                  // type
-		"end",                      // subtype
-		"1",                        // config_version
-		logTime,                    // time_generated
-		srcIP,                      // src
-		dstIP,                      // dst
-		strconv.Itoa(int(dstPort)), // dst_port
-		"0",                        // rule (default)
-		proto,                      // proto
-		"allow",                    // action
-		// ... остальные поля Palo Alto (упрощённый формат)
-		strconv.FormatUint(uint64(packets), 10),  // packets
-		strconv.FormatUint(bytesIn, 10),          // bytes_sent
-		strconv.FormatUint(bytesOut, 10),         // bytes_received
-		strconv.FormatUint(bytesIn+bytesOut, 10), // total_bytes
-	}
+	totalBytes := bytesIn + bytesOut
 
-	e.rawMessage = fmt.Sprintf(
-		"<134>%s palo-device 1,%s",
-		syslogTime,
-		strings.Join(fields, ","),
+	// CEF Extension (key=value pairs)
+	extension := fmt.Sprintf(
+		"rt=%s deviceExternalId=007057000057896 src=%s dst=%s spt=0 dpt=%d "+
+			"proto=%s act=allow "+
+			"flexNumber1Label=Total bytes flexNumber1=%d in=%d out=%d "+
+			"cn2Label=Packets cn2=%d "+
+			"cat=end cs6Label=LogProfile cs6=default",
+		cefTime, srcIP, dstIP, dstPort, proto, totalBytes, bytesIn, bytesOut, packets,
 	)
+
+	// CEF Header: CEF:Version|Vendor|Product|Version|SignatureID|Name|Severity|Extension
+	e.rawMessage = fmt.Sprintf(
+		"<134>%s palo-device CEF:0|Palo Alto Networks|PAN-OS|10.0.0|%s|TRAFFIC|3|%s",
+		syslogTime,
+		proto, // используем протокол как SignatureID
+		extension,
+	)
+
 	e.timestamp = now
-	e.validationErr = nil // сброс кэша ошибки
+	e.validationErr = nil
 	return nil
 }
 
