@@ -6,10 +6,10 @@ import (
 	"sync/atomic"
 )
 
-// NetFlowV5Packet представляет полный NetFlow v5 пакет
-type NetFlowV5Packet struct {
-	Header  *NetFlowV5Header
-	Records []*NetFlowV5Record
+// V5Packet представляет полный NetFlow v5 пакет
+type V5Packet struct {
+	Header  *V5Header
+	Records []*V5Record
 }
 
 // sequenceCounter глобальный счетчик для sequence numbers
@@ -18,8 +18,8 @@ var sequenceCounter uint64
 // MaxRecordsPerPacket максимальное количество записей в одном пакете
 const MaxRecordsPerPacket = 30
 
-// NewNetFlowV5Packet создает новый NetFlow пакет с записями
-func NewNetFlowV5Packet(records []*NetFlowV5Record) (*NetFlowV5Packet, error) {
+// NewV5Packet создает новый NetFlow пакет с записями
+func NewV5Packet(records []*V5Record) (*V5Packet, error) {
 	if len(records) == 0 {
 		return nil, fmt.Errorf("packet must contain at least one record")
 	}
@@ -31,9 +31,9 @@ func NewNetFlowV5Packet(records []*NetFlowV5Record) (*NetFlowV5Packet, error) {
 	// Получаем следующий sequence number
 	sequence := atomic.AddUint64(&sequenceCounter, uint64(len(records)))
 
-	header := NewNetFlowV5Header(uint16(len(records)), uint32(sequence))
+	header := NewV5Header(uint16(len(records)), uint32(sequence))
 
-	return &NetFlowV5Packet{
+	return &V5Packet{
 		Header:  header,
 		Records: records,
 	}, nil
@@ -41,7 +41,7 @@ func NewNetFlowV5Packet(records []*NetFlowV5Record) (*NetFlowV5Packet, error) {
 
 // ToBytes сериализует NetFlow v5 пакет в бинарный вид
 // ToBytes сериализует NetFlow v5 пакет в бинарный вид
-func (p *NetFlowV5Packet) ToBytes() ([]byte, error) {
+func (p *V5Packet) ToBytes() ([]byte, error) {
 	// Валидация
 	if err := p.Validate(); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
@@ -74,12 +74,12 @@ func (p *NetFlowV5Packet) ToBytes() ([]byte, error) {
 }
 
 // Size возвращает размер пакета в байтах
-func (p *NetFlowV5Packet) Size() int {
+func (p *V5Packet) Size() int {
 	return 24 + len(p.Records)*48
 }
 
 // Validate проверяет корректность пакета
-func (p *NetFlowV5Packet) Validate() error {
+func (p *V5Packet) Validate() error {
 	if p.Header == nil {
 		return fmt.Errorf("header is required")
 	}

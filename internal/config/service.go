@@ -4,13 +4,13 @@ import (
 	"fmt"
 )
 
-// ConfigService для работы с конфигурацией
-type ConfigService interface {
+// Service для работы с конфигурацией
+type Service interface {
 	Load() error
 	GetConfig() *Config
 }
 
-// configService реализация ConfigService
+// configService реализация Service
 type configService struct {
 	config   *Config
 	loader   *Loader
@@ -18,8 +18,8 @@ type configService struct {
 	flags    *Flags
 }
 
-// NewConfigService создает новый экземпляр ConfigService
-func NewConfigService(filePath string, flags *Flags) ConfigService {
+// NewService создает новый экземпляр Service
+func NewService(filePath string, flags *Flags) Service {
 	return &configService{
 		config:   DefaultConfig(),
 		loader:   NewLoader(),

@@ -148,7 +148,7 @@ func TestLoadConfig_ValidateFails_InvalidBufferSize(t *testing.T) {
 func TestConfigService_Load_Success(t *testing.T) {
 	withEnv(t, "UEBA_PROTOCOL", "udp", func() {
 		flags := &Flags{Rate: 500}
-		service := NewConfigService("testdata/valid.yaml", flags)
+		service := NewService("testdata/valid.yaml", flags)
 
 		err := service.Load()
 		require.NoError(t, err)
@@ -162,7 +162,7 @@ func TestConfigService_Load_Success(t *testing.T) {
 }
 
 func TestConfigService_Load_FileNotFound(t *testing.T) {
-	service := NewConfigService("nonexistent.yaml", nil)
+	service := NewService("nonexistent.yaml", nil)
 	err := service.Load()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to load config from file")
@@ -171,7 +171,7 @@ func TestConfigService_Load_FileNotFound(t *testing.T) {
 
 func TestConfigService_Load_ValidationFails(t *testing.T) {
 	withEnv(t, "UEBA_PROTOCOL", "http", func() { // недопустимый протокол
-		service := NewConfigService("", nil)
+		service := NewService("", nil)
 		err := service.Load()
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "config validate failed")
@@ -179,7 +179,7 @@ func TestConfigService_Load_ValidationFails(t *testing.T) {
 }
 
 func TestConfigService_GetConfig_BeforeLoad(t *testing.T) {
-	service := NewConfigService("", nil)
+	service := NewService("", nil)
 	// До Load() config — это копия DefaultConfig()
 	cfg := service.GetConfig()
 	require.NotNil(t, cfg)
@@ -187,7 +187,7 @@ func TestConfigService_GetConfig_BeforeLoad(t *testing.T) {
 }
 
 func TestConfigService_GetConfig_AfterLoad(t *testing.T) {
-	service := NewConfigService("testdata/valid.yaml", &Flags{Rate: 999})
+	service := NewService("testdata/valid.yaml", &Flags{Rate: 999})
 	err := service.Load()
 	require.NoError(t, err)
 
@@ -198,7 +198,7 @@ func TestConfigService_GetConfig_AfterLoad(t *testing.T) {
 
 func TestConfigService_EmptyFile_UsesDefaultsAndEnv(t *testing.T) {
 	withEnv(t, "UEBA_EVENTS_PER_SEC", "777", func() {
-		service := NewConfigService("testdata/empty.yaml", nil)
+		service := NewService("testdata/empty.yaml", nil)
 		err := service.Load()
 		require.NoError(t, err)
 		cfg := service.GetConfig()

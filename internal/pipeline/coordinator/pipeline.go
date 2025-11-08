@@ -167,7 +167,7 @@ func (p *pipelineImpl) startStages() {
 
 		p.wg.Add(1)
 
-		go func(s Stage, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool, index int) {
+		go func(s Stage, in <-chan *stages.SerializedData, out chan<- *stages.SerializedData, ready chan<- bool, _ int) {
 			defer p.wg.Done()
 			defer close(out)
 

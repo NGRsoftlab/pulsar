@@ -9,24 +9,24 @@ type Logger interface {
 	Error(msg string, args ...any)
 }
 
-type stdLogger struct{}
+type StdLogger struct{}
 
-func NewStdLogger() *stdLogger {
-	return &stdLogger{}
+func NewStdLogger() *StdLogger {
+	return &StdLogger{}
 }
 
-func (l *stdLogger) Debug(msg string, args ...any) {
+func (l *StdLogger) Debug(msg string, args ...any) {
 	log.Printf("[DEBUG] "+msg, args...)
 }
 
-func (l *stdLogger) Info(msg string, args ...any) {
+func (l *StdLogger) Info(msg string, args ...any) {
 	log.Printf("[INFO] "+msg, args...)
 }
 
-func (l *stdLogger) Warn(msg string, args ...any) {
+func (l *StdLogger) Warn(msg string, args ...any) {
 	log.Printf("[WARNING] "+msg, args...)
 }
 
-func (l *stdLogger) Error(msg string, args ...any) {
+func (l *StdLogger) Error(msg string, args ...any) {
 	log.Printf("[ERROR] "+msg, args...)
 }

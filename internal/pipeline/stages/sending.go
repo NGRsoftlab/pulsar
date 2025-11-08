@@ -81,7 +81,7 @@ func (jb *NetworkSendJobBatch) ExecuteBatch() error {
 	return nil
 }
 
-func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData, out chan<- *SerializedData, ready chan<- bool) error {
+func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData, _ chan<- *SerializedData, ready chan<- bool) error {
 	s.workerPool.Start(ctx)
 
 	if ready != nil {
@@ -191,7 +191,7 @@ func (s *NetworkSendingStage) SetProtocol(protocol string) error {
 // теперь работают через sender (если он поддерживает)
 // Для простоты оставим их как есть, но они будут возвращать ошибку,
 // если sender не TCP
-func (s *NetworkSendingStage) ResizeConnectionPool(newSize int) error {
+func (s *NetworkSendingStage) ResizeConnectionPool(_ int) error {
 	if s.protocol != "tcp" {
 		return fmt.Errorf("pool resizing only supported for TCP")
 	}

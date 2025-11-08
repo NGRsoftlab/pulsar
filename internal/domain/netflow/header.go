@@ -6,8 +6,8 @@ import (
 
 var nowFunc = time.Now
 
-// NetFlowV5Header представляет заголовок NetFlow v5 пакета (24 байта)
-type NetFlowV5Header struct {
+// V5Header представляет заголовок NetFlow v5 пакета (24 байта)
+type V5Header struct {
 	Version      uint16 // Версия NetFlow (5)
 	Count        uint16 // Количество flow records в пакете (максимум 30)
 	SysUptime    uint32 // Время работы системы (миллисекунды)
@@ -19,11 +19,11 @@ type NetFlowV5Header struct {
 	SamplingMode uint16 // Режим сэмплирования (0 = не используется)
 }
 
-// NewNetFlowV5Header создает новый заголовок с текущим временем
-func NewNetFlowV5Header(count uint16, sequence uint32) *NetFlowV5Header {
+// NewV5Header создает новый заголовок с текущим временем
+func NewV5Header(count uint16, sequence uint32) *V5Header {
 	now := nowFunc()
 
-	return &NetFlowV5Header{
+	return &V5Header{
 		Version:      5,
 		Count:        count,
 		SysUptime:    uint32(time.Since(bootTime).Milliseconds()),

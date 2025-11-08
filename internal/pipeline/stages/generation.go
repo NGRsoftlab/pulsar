@@ -74,7 +74,7 @@ func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 
 // EventGenerationStage генерирует события с высокой скоростью
 type EventGenerationStage struct {
-	eventType         event.EventType
+	eventType         event.Type
 	eventsPerSecond   int
 	serializationMode SerializationMode
 	packetMode        bool
@@ -84,7 +84,7 @@ type EventGenerationStage struct {
 
 // NewEventGenerationStage создаёт стадию генерации
 func NewEventGenerationStage(
-	eventType event.EventType,
+	eventType event.Type,
 	eventsPerSecond int,
 	serializationMode SerializationMode,
 	packetMode bool,
@@ -102,7 +102,7 @@ func NewEventGenerationStage(
 }
 
 // Run запускает генерацию событий с batch + таймаут
-func (g *EventGenerationStage) Run(ctx context.Context, in <-chan *SerializedData, out chan<- *SerializedData, ready chan<- bool) error {
+func (g *EventGenerationStage) Run(ctx context.Context, _ <-chan *SerializedData, out chan<- *SerializedData, ready chan<- bool) error {
 	limiter := rate.NewLimiter(rate.Limit(g.eventsPerSecond), 100) // burst = 100
 
 	g.workerPool.Start(ctx)

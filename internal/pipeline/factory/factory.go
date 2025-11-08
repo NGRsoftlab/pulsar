@@ -101,7 +101,7 @@ func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 	), nil
 }
 
-func (f *PipelineFactory) parseSingleEventType() (event.EventType, error) {
+func (f *PipelineFactory) parseSingleEventType() (event.Type, error) {
 	if len(f.cfg.Generator.EventTypes) == 0 {
 		return 0, fmt.Errorf("at least one event type required")
 	}
@@ -168,8 +168,8 @@ func (f *PipelineFactory) createSender(dest, protocol string) (stages.Sender, er
 	}
 }
 
-func (f *PipelineFactory) ParseEventTypes() ([]event.EventType, error) {
-	eventTypes := make([]event.EventType, len(f.cfg.Generator.EventTypes))
+func (f *PipelineFactory) ParseEventTypes() ([]event.Type, error) {
+	eventTypes := make([]event.Type, len(f.cfg.Generator.EventTypes))
 
 	for i, typeStr := range f.cfg.Generator.EventTypes {
 		switch strings.ToLower(typeStr) {

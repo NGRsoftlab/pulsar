@@ -39,7 +39,7 @@ func NewNetflowEvent() *NetflowEvent {
 	}
 }
 
-func (e NetflowEvent) Type() EventType {
+func (e NetflowEvent) Type() Type {
 	return EventTypeNetflow
 }
 
@@ -68,7 +68,7 @@ func (e NetflowEvent) ToBinaryNetFlow() ([]byte, error) {
 		tcpFlags = 0x18 // Пример TCP флагов PSH+ACK
 	}
 
-	record := netflow.NewNetFlowV5Record(
+	record := netflow.NewV5Record(
 		e.SourceAddr,
 		e.DestinationAddr,
 		e.SourcePort,
@@ -79,7 +79,7 @@ func (e NetflowEvent) ToBinaryNetFlow() ([]byte, error) {
 		tcpFlags,
 	)
 
-	packet, err := netflow.NewNetFlowV5Packet([]*netflow.NetFlowV5Record{record})
+	packet, err := netflow.NewV5Packet([]*netflow.V5Record{record})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NetFlow packet: %w", err)
 	}

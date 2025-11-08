@@ -133,7 +133,7 @@ func TestEventGenerationJobBatch_ExecuteBatch_Netflow(t *testing.T) {
 // fakeEvent — минимальная реализация event.Event для тестов
 type fakeEvent struct{}
 
-func (f *fakeEvent) Type() event.EventType {
+func (f *fakeEvent) Type() event.Type {
 	return event.EventTypeUnknown
 }
 

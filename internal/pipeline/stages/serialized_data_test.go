@@ -18,11 +18,11 @@ type fakeBinaryEvent struct {
 	id string
 }
 
-func (f *fakeBinaryEvent) Type() event.EventType { return event.EventTypeNetflow }
-func (f *fakeBinaryEvent) Timestamp() time.Time  { return time.Unix(12345, 0) }
-func (f *fakeBinaryEvent) Size() int             { return 100 }
-func (f *fakeBinaryEvent) Validate() error       { return nil }
-func (f *fakeBinaryEvent) GetID() string         { return f.id }
+func (f *fakeBinaryEvent) Type() event.Type     { return event.EventTypeNetflow }
+func (f *fakeBinaryEvent) Timestamp() time.Time { return time.Unix(12345, 0) }
+func (f *fakeBinaryEvent) Size() int            { return 100 }
+func (f *fakeBinaryEvent) Validate() error      { return nil }
+func (f *fakeBinaryEvent) GetID() string        { return f.id }
 func (f *fakeBinaryEvent) GetSourceIP() netip.Addr {
 	addr, _ := netip.ParseAddr("192.0.2.1")
 	return addr
@@ -52,11 +52,11 @@ type fakeNonBinaryEvent struct {
 	id string
 }
 
-func (f *fakeNonBinaryEvent) Type() event.EventType { return event.EventTypeSyslog }
-func (f *fakeNonBinaryEvent) Timestamp() time.Time  { return time.Unix(12345, 0) }
-func (f *fakeNonBinaryEvent) Size() int             { return 50 }
-func (f *fakeNonBinaryEvent) Validate() error       { return nil }
-func (f *fakeNonBinaryEvent) GetID() string         { return f.id }
+func (f *fakeNonBinaryEvent) Type() event.Type     { return event.EventTypeSyslog }
+func (f *fakeNonBinaryEvent) Timestamp() time.Time { return time.Unix(12345, 0) }
+func (f *fakeNonBinaryEvent) Size() int            { return 50 }
+func (f *fakeNonBinaryEvent) Validate() error      { return nil }
+func (f *fakeNonBinaryEvent) GetID() string        { return f.id }
 func (f *fakeNonBinaryEvent) GetSourceIP() netip.Addr {
 	addr, _ := netip.ParseAddr("192.0.2.3")
 	return addr
@@ -139,11 +139,11 @@ type errorBinaryEvent struct {
 	id string
 }
 
-func (f *errorBinaryEvent) Type() event.EventType { return event.EventTypeNetflow }
-func (f *errorBinaryEvent) Timestamp() time.Time  { return time.Unix(12345, 0) }
-func (f *errorBinaryEvent) Size() int             { return 100 }
-func (f *errorBinaryEvent) Validate() error       { return nil }
-func (f *errorBinaryEvent) GetID() string         { return f.id }
+func (f *errorBinaryEvent) Type() event.Type     { return event.EventTypeNetflow }
+func (f *errorBinaryEvent) Timestamp() time.Time { return time.Unix(12345, 0) }
+func (f *errorBinaryEvent) Size() int            { return 100 }
+func (f *errorBinaryEvent) Validate() error      { return nil }
+func (f *errorBinaryEvent) GetID() string        { return f.id }
 func (f *errorBinaryEvent) GetSourceIP() netip.Addr {
 	addr, _ := netip.ParseAddr("192.0.2.1")
 	return addr

@@ -106,7 +106,7 @@ func loadConfiguration(flags *cli.Flags) (*config.Config, error) {
 		configFlags.EventsType = parts
 	}
 
-	service := config.NewConfigService(flags.ConfigFile, configFlags)
+	service := config.NewService(flags.ConfigFile, configFlags)
 
 	if err := service.Load(); err != nil {
 		return nil, err

@@ -50,11 +50,11 @@ func TestProtocolFromString(t *testing.T) {
 	}
 }
 
-func TestNewNetFlowV5Record(t *testing.T) {
+func TestNewV5Record(t *testing.T) {
 	srcIP := netip.MustParseAddr("192.168.1.10")
 	dstIP := netip.MustParseAddr("8.8.8.8")
 
-	rec := NewNetFlowV5Record(srcIP, dstIP, 50000, 443, 6, 1500, 3, 0x18)
+	rec := NewV5Record(srcIP, dstIP, 50000, 443, 6, 1500, 3, 0x18)
 
 	// Проверим IP
 	assert.Equal(t, []byte{192, 168, 1, 10}, rec.SrcAddr[:])
@@ -74,11 +74,11 @@ func TestNewNetFlowV5Record(t *testing.T) {
 	assert.Equal(t, [4]byte{0, 0, 0, 0}, rec.NextHop)
 }
 
-func TestNetFlowV5Record_ToBytes(t *testing.T) {
+func TestV5Record_ToBytes(t *testing.T) {
 	srcIP := netip.MustParseAddr("10.0.0.1")
 	dstIP := netip.MustParseAddr("1.1.1.1")
 
-	rec := NewNetFlowV5Record(srcIP, dstIP, 12345, 53, 17, 200, 2, 0)
+	rec := NewV5Record(srcIP, dstIP, 12345, 53, 17, 200, 2, 0)
 	buf := rec.ToBytes()
 
 	assert.Len(t, buf, 48)
@@ -99,13 +99,13 @@ func TestNetFlowV5Record_ToBytes(t *testing.T) {
 	assert.Equal(t, uint32(2), binary.BigEndian.Uint32(buf[16:20]))
 }
 
-func TestNewNetFlowV5Header(t *testing.T) {
+func TestNewV5Header(t *testing.T) {
 	mockGlobals()
 	defer func() {
 		// Восстановим, если нужно
 	}()
 
-	header := NewNetFlowV5Header(1, 1000)
+	header := NewV5Header(1, 1000)
 
 	assert.Equal(t, uint16(5), header.Version)
 	assert.Equal(t, uint16(1), header.Count)
@@ -119,16 +119,16 @@ func TestNewNetFlowV5Header(t *testing.T) {
 	assert.GreaterOrEqual(t, header.SysUptime, uint32(0))
 }
 
-func TestNewNetFlowV5Packet(t *testing.T) {
+func TestNewV5Packet(t *testing.T) {
 	bootOrig, seqOrig, nowOrig := saveGlobals()
 	mockGlobals()
 	defer restoreGlobals(bootOrig, seqOrig, nowOrig)
 
 	srcIP := netip.MustParseAddr("192.168.1.10")
 	dstIP := netip.MustParseAddr("8.8.8.8")
-	rec := NewNetFlowV5Record(srcIP, dstIP, 12345, 443, 6, 1500, 3, 0x18)
+	rec := NewV5Record(srcIP, dstIP, 12345, 443, 6, 1500, 3, 0x18)
 
-	packet, err := NewNetFlowV5Packet([]*NetFlowV5Record{rec})
+	packet, err := NewV5Packet([]*V5Record{rec})
 	require.NoError(t, err)
 	assert.Equal(t, uint16(1), packet.Header.Count)
 	assert.Equal(t, uint32(1000), packet.Header.FlowSequence) // sequenceCounter был 999 → +1 = 1000
@@ -138,10 +138,10 @@ func TestNewNetFlowV5Packet(t *testing.T) {
 	assert.Equal(t, rec.SrcPort, packet.Records[0].SrcPort)
 }
 
-func TestNewNetFlowV5Packet_TooManyRecords(t *testing.T) {
-	var records []*NetFlowV5Record
+func TestNewV5Packet_TooManyRecords(t *testing.T) {
+	var records []*V5Record
 	for i := 0; i <= MaxRecordsPerPacket; i++ {
-		rec := NewNetFlowV5Record(
+		rec := NewV5Record(
 			netip.MustParseAddr("1.1.1.1"),
 			netip.MustParseAddr("2.2.2.2"),
 			10000+uint16(i), 80, 6, 100, 1, 0,
@@ -149,32 +149,32 @@ func TestNewNetFlowV5Packet_TooManyRecords(t *testing.T) {
 		records = append(records, rec)
 	}
 
-	_, err := NewNetFlowV5Packet(records)
+	_, err := NewV5Packet(records)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "too many records")
 }
 
-func TestNewNetFlowV5Packet_EmptyRecords(t *testing.T) {
-	_, err := NewNetFlowV5Packet(nil)
+func TestNewV5Packet_EmptyRecords(t *testing.T) {
+	_, err := NewV5Packet(nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "at least one record")
 
-	_, err = NewNetFlowV5Packet([]*NetFlowV5Record{})
+	_, err = NewV5Packet([]*V5Record{})
 	assert.Error(t, err)
 }
 
-func TestNetFlowV5Packet_ToBytes(t *testing.T) {
+func TestV5Packet_ToBytes(t *testing.T) {
 	bootOrig, seqOrig, nowOrig := saveGlobals()
 	mockGlobals()
 	defer restoreGlobals(bootOrig, seqOrig, nowOrig)
 
-	rec := NewNetFlowV5Record(
+	rec := NewV5Record(
 		netip.MustParseAddr("10.0.1.100"),
 		netip.MustParseAddr("93.184.216.34"),
 		54321, 80, 6, 2048, 10, 0x18,
 	)
 
-	packet, err := NewNetFlowV5Packet([]*NetFlowV5Record{rec})
+	packet, err := NewV5Packet([]*V5Record{rec})
 	require.NoError(t, err)
 
 	buf, err := packet.ToBytes()
@@ -197,10 +197,10 @@ func TestNetFlowV5Packet_ToBytes(t *testing.T) {
 	assert.Equal(t, uint8(0x18), buf[61])
 }
 
-func TestNetFlowV5Packet_Validate(t *testing.T) {
-	rec := NewNetFlowV5Record(netip.MustParseAddr("1.1.1.1"), netip.MustParseAddr("2.2.2.2"), 1000, 80, 6, 100, 1, 0)
+func TestV5Packet_Validate(t *testing.T) {
+	rec := NewV5Record(netip.MustParseAddr("1.1.1.1"), netip.MustParseAddr("2.2.2.2"), 1000, 80, 6, 100, 1, 0)
 
-	packet, err := NewNetFlowV5Packet([]*NetFlowV5Record{rec})
+	packet, err := NewV5Packet([]*V5Record{rec})
 	require.NoError(t, err)
 
 	assert.NoError(t, packet.Validate())
@@ -209,8 +209,8 @@ func TestNetFlowV5Packet_Validate(t *testing.T) {
 	packet.Header = nil
 	assert.Error(t, packet.Validate())
 
-	packet.Header = &NetFlowV5Header{Count: 2} // должно быть 1
-	packet.Records = []*NetFlowV5Record{rec}
+	packet.Header = &V5Header{Count: 2} // должно быть 1
+	packet.Records = []*V5Record{rec}
 	assert.Error(t, packet.Validate())
 
 	packet.Header.Count = 1

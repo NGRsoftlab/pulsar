@@ -6,8 +6,8 @@ import (
 	"net/netip"
 )
 
-// NetFlowV5Record представляет одну flow запись в NetFlow v5 пакете (48 байт)
-type NetFlowV5Record struct {
+// V5Record представляет одну flow запись в NetFlow v5 пакете (48 байт)
+type V5Record struct {
 	SrcAddr  [4]byte // IP адрес источника
 	DstAddr  [4]byte // IP адрес назначения
 	NextHop  [4]byte // IP адрес следующего hop (обычно 0.0.0.0)
@@ -31,7 +31,7 @@ type NetFlowV5Record struct {
 }
 
 // ToBytes сериализует запись в байты (network byte order)
-func (r *NetFlowV5Record) ToBytes() []byte {
+func (r *V5Record) ToBytes() []byte {
 	buf := make([]byte, 48)
 
 	copy(buf[0:4], r.SrcAddr[:])
@@ -62,17 +62,17 @@ func (r *NetFlowV5Record) ToBytes() []byte {
 	return buf
 }
 
-// NewNetFlowV5Record создает новую NetFlow запись из параметров
-func NewNetFlowV5Record(srcIP, dstIP netip.Addr, srcPort, dstPort uint16,
+// NewV5Record создает новую NetFlow запись из параметров
+func NewV5Record(srcIP, dstIP netip.Addr, srcPort, dstPort uint16,
 	protocol uint8, bytes, packets uint32, tcpFlags uint8,
-) *NetFlowV5Record {
+) *V5Record {
 	now := nowFunc()
 	uptime := uint32(now.Sub(bootTime).Milliseconds())
 
 	first := uptime - uint32(rand.Intn(1000)) // случайное смещение до 1 сек
 	last := uptime
 
-	record := &NetFlowV5Record{
+	record := &V5Record{
 		Input:    0,
 		Output:   0,
 		Packets:  packets,

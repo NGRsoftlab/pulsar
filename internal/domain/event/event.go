@@ -8,16 +8,16 @@ import (
 	"time"
 )
 
-// EventType определяет тип события для генерации
-type EventType int
+// Type определяет тип события для генерации
+type Type int
 
 const (
-	EventTypeUnknown EventType = iota
+	EventTypeUnknown Type = iota
 	EventTypeNetflow
 	EventTypeSyslog
 )
 
-func (et EventType) String() string {
+func (et Type) String() string {
 	switch et {
 	case EventTypeNetflow:
 		return "netflow"
@@ -30,7 +30,7 @@ func (et EventType) String() string {
 
 // Event общий интерфейс для всех видов событий
 type Event interface {
-	Type() EventType
+	Type() Type
 	Timestamp() time.Time
 	Size() int
 	Validate() error
@@ -40,7 +40,7 @@ type Event interface {
 }
 
 // generateEventID генерирует уникальный идентификатор события
-func generateEventID(eventType EventType) string {
+func generateEventID(eventType Type) string {
 	// Генерируем 128-битный случайный идентификатор (16 байт)
 	randBytes := make([]byte, 16)
 	if _, err := rand.Read(randBytes); err != nil {
@@ -60,16 +60,16 @@ func generateEventID(eventType EventType) string {
 	return prefix + "_" + hex.EncodeToString(randBytes[:8]) // 8 байт = 16 hex-символов → достаточно для локальной уникальности
 }
 
-// EventFactory создает события на основе типа
-type EventFactory struct{}
+// Factory создает события на основе типа
+type Factory struct{}
 
-// NewEventFactory создает новую фабрику событий
-func NewEventFactory() *EventFactory {
-	return &EventFactory{}
+// NewFactory создает новую фабрику событий
+func NewFactory() *Factory {
+	return &Factory{}
 }
 
 // CreateEvent создает событие указанного типа
-func (f *EventFactory) CreateEvent(eventType EventType) (Event, error) {
+func (f *Factory) CreateEvent(eventType Type) (Event, error) {
 	switch eventType {
 	case EventTypeNetflow:
 		return NewNetflowEvent(), nil
@@ -80,8 +80,8 @@ func (f *EventFactory) CreateEvent(eventType EventType) (Event, error) {
 	}
 }
 
-// ParseEventType парсит строку в EventType
-func (f *EventFactory) ParseEventType(s string) (EventType, error) {
+// ParseType парсит строку в Type
+func (f *Factory) ParseEventType(s string) (Type, error) {
 	switch s {
 	case "netflow":
 		return EventTypeNetflow, nil

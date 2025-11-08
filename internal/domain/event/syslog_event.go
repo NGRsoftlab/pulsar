@@ -29,7 +29,7 @@ func NewSyslogPaloAltoEvent() *SyslogPaloAltoEvent {
 }
 
 // Type реализует Event
-func (e *SyslogPaloAltoEvent) Type() EventType {
+func (e *SyslogPaloAltoEvent) Type() Type {
 	return EventTypeSyslog
 }
 

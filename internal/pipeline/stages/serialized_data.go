@@ -11,7 +11,7 @@ import (
 // SerializedData представляет готовые данные для отправки
 type SerializedData struct {
 	Data              []byte
-	EventType         event.EventType
+	EventType         event.Type
 	Size              int
 	Timestamp         time.Time
 	EventID           string
@@ -22,7 +22,7 @@ type SerializedData struct {
 }
 
 // NewSerializedData создает новый экземпляр SerializedData
-func NewSerializedData(data []byte, eventType event.EventType, eventID string, mode SerializationMode) *SerializedData {
+func NewSerializedData(data []byte, eventType event.Type, eventID string, mode SerializationMode) *SerializedData {
 	return &SerializedData{
 		Data:              data,
 		EventType:         eventType,
