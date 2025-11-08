@@ -113,10 +113,10 @@ jobs:
     
     - name: Build for multiple platforms
       run: |
-        GOOS=linux GOARCH=amd64 go build -o build/ueba-generator-linux-amd64 ./cmd/ueba-generator
-        GOOS=windows GOARCH=amd64 go build -o build/ueba-generator-windows-amd64.exe ./cmd/ueba-generator
-        GOOS=darwin GOARCH=amd64 go build -o build/ueba-generator-darwin-amd64 ./cmd/ueba-generator
-        GOOS=darwin GOARCH=arm64 go build -o build/ueba-generator-darwin-arm64 ./cmd/ueba-generator
+        GOOS=linux GOARCH=amd64 go build -o build/ueba-generator-linux-amd64 ./cmd      
+        GOOS=windows GOARCH=amd64 go build -o build/ueba-generator-windows-amd64.exe ./cmd
+        GOOS=darwin GOARCH=amd64 go build -o build/ueba-generator-darwin-amd64 ./cmd
+        GOOS=darwin GOARCH=arm64 go build -o build/ueba-generator-darwin-arm64 ./cmd
     
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4  
