@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/nashabanov/ueba-event-generator/internal/pipeline/stages"
+	"github.com/NGRsoftlab/pulsar/internal/pipeline/stages"
 )
 
 // Pipeline - интерфейс для пайплайна

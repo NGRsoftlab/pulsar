@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/pipeline/stages"
+	"github.com/NGRsoftlab/pulsar/internal/pipeline/stages"
 )
 
 type echoStage struct{}

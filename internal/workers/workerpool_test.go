@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/nashabanov/ueba-event-generator/internal/types"
+	"github.com/NGRsoftlab/pulsar/internal/types"
 )
 
 type mockWorkerMetrics struct{}

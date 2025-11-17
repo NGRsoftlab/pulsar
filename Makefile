@@ -13,7 +13,7 @@ build:
 	$(GOBUILD) -o $(BINARY_NAME) $(BINARY_PATH)
 
 # Run tests all tests from root dir
-testall:
+test-all:
 	$(GOTEST) ./... -v -race
 
 # Run becnhmarks from some project package 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/logger"
+	"github.com/NGRsoftlab/pulsar/internal/logger"
 )
 
 // --- Mocks ---

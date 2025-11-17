@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/domain/event"
 )
 
 type Sender interface {

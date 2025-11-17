@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/types"
+	"github.com/NGRsoftlab/pulsar/internal/types"
 )
 
 type WorkerMetrics interface {

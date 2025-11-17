@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/config"
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
-	"github.com/nashabanov/ueba-event-generator/internal/network"
-	"github.com/nashabanov/ueba-event-generator/internal/pipeline/coordinator"
-	"github.com/nashabanov/ueba-event-generator/internal/pipeline/stages"
-	"github.com/nashabanov/ueba-event-generator/internal/types"
-	"github.com/nashabanov/ueba-event-generator/internal/workers"
+	"github.com/NGRsoftlab/pulsar/internal/config"
+	"github.com/NGRsoftlab/pulsar/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/network"
+	"github.com/NGRsoftlab/pulsar/internal/pipeline/coordinator"
+	"github.com/NGRsoftlab/pulsar/internal/pipeline/stages"
+	"github.com/NGRsoftlab/pulsar/internal/types"
+	"github.com/NGRsoftlab/pulsar/internal/workers"
 )
 
 type PipelineFactory struct {

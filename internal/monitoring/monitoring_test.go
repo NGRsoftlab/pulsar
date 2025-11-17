@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/monitoring"
+	"github.com/NGRsoftlab/pulsar/internal/monitoring"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )

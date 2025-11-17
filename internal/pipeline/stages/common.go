@@ -7,7 +7,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/types"
+	"github.com/NGRsoftlab/pulsar/internal/types"
 )
 
 // StageConfig базовая конфигурация для всех стадий

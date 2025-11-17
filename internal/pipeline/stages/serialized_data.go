@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
-	"github.com/nashabanov/ueba-event-generator/internal/types"
+	"github.com/NGRsoftlab/pulsar/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/types"
 )
 
 // SerializedData представляет готовые данные для отправки

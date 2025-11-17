@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/nashabanov/ueba-event-generator/internal/config"
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
+	"github.com/NGRsoftlab/pulsar/internal/config"
+	"github.com/NGRsoftlab/pulsar/internal/metrics"
 )
 
 func TestPipelineFactory_ParseEventTypes(t *testing.T) {

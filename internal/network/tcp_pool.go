@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
+	"github.com/NGRsoftlab/pulsar/internal/metrics"
 )
 
 type TCPConnection struct {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/logger"
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
+	"github.com/NGRsoftlab/pulsar/internal/logger"
+	"github.com/NGRsoftlab/pulsar/internal/metrics"
 )
 
 type Monitor interface {

@@ -1,7 +1,7 @@
 // Package types общие интерфейсы для корректной типизации
 package types
 
-import "github.com/nashabanov/ueba-event-generator/internal/domain/event"
+import "github.com/NGRsoftlab/pulsar/internal/domain/event"
 
 // JobBatch — интерфейс для пакетной обработки задач
 type JobBatch interface {

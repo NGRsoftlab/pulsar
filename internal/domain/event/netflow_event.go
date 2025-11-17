@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/domain/netflow"
+	"github.com/NGRsoftlab/pulsar/internal/domain/netflow"
 )
 
 // NetflowEvent представляет Netflow v5 событие с поддержкой бинарной сериализации

@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/domain/event"
 )
 
 // EventGenerationJobBatch - пакет событий для WorkerPool

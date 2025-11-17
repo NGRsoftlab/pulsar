@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/logger"
+	"github.com/NGRsoftlab/pulsar/internal/logger"
 )
 
 type pipeline interface {

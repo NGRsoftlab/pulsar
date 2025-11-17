@@ -1,4 +1,4 @@
-module github.com/nashabanov/ueba-event-generator
+module github.com/NGRsoftlab/pulsar 
 
 go 1.24.0
 

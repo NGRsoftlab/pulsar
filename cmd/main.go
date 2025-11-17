@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nashabanov/ueba-event-generator/internal/cli"
-	"github.com/nashabanov/ueba-event-generator/internal/config"
-	"github.com/nashabanov/ueba-event-generator/internal/lifecycle"
-	"github.com/nashabanov/ueba-event-generator/internal/logger"
-	"github.com/nashabanov/ueba-event-generator/internal/metrics"
-	"github.com/nashabanov/ueba-event-generator/internal/monitoring"
-	"github.com/nashabanov/ueba-event-generator/internal/pipeline/factory"
+	"github.com/NGRsoftlab/pulsar/internal/cli"
+	"github.com/NGRsoftlab/pulsar/internal/config"
+	"github.com/NGRsoftlab/pulsar/internal/lifecycle"
+	"github.com/NGRsoftlab/pulsar/internal/logger"
+	"github.com/NGRsoftlab/pulsar/internal/metrics"
+	"github.com/NGRsoftlab/pulsar/internal/monitoring"
+	"github.com/NGRsoftlab/pulsar/internal/pipeline/factory"
 )
 
 // Версионная информация (заполняется при сборке)

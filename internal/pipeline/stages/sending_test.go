@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nashabanov/ueba-event-generator/internal/domain/event"
-	"github.com/nashabanov/ueba-event-generator/internal/types"
+	"github.com/NGRsoftlab/pulsar/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/types"
 )
 
 // ================
