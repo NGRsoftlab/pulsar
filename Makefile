@@ -5,7 +5,7 @@ GOCMD=go
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
-BINARY_NAME=ueba-event-generator.exe
+BINARY_NAME=pulsar.exe
 BINARY_PATH=./cmd
 
 # Build the binary
