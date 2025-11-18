@@ -21,7 +21,6 @@ type WorkerMetrics interface {
 }
 
 // LockFreeQueue использует sync/atomic.Value для безопасного доступа к буферу
-// Это избегает race condition, которую видит race detector
 type LockFreeQueue struct {
 	// Массив хранит слайсы с types.JobBatch для минимизации конкуренции
 	// Вместо прямого доступа к buffer[index], используем atomic.Value
@@ -48,25 +47,24 @@ func (q *LockFreeQueue) TryPush(job types.JobBatch) bool {
 	}
 
 	for {
-		tail := q.tail.Load()
 		head := q.head.Load()
+		tail := q.tail.Load()
 
-		if (tail+1)%q.size == head%q.size {
+		// Очередь полна?
+		if tail-head == q.size {
 			return false
 		}
 
-		if !q.tail.CompareAndSwap(tail, tail+1) {
-			continue
-		}
+		if q.tail.CompareAndSwap(tail, tail+1) {
+			idx := tail % q.size
+			q.buffer[idx].Store(job)
 
-		idx := tail % q.size
-		q.buffer[idx].Store(job)
-
-		select {
-		case q.notify <- struct{}{}:
-		default:
+			select {
+			case q.notify <- struct{}{}:
+			default:
+			}
+			return true
 		}
-		return true
 	}
 }
 
@@ -76,21 +74,18 @@ func (q *LockFreeQueue) TryPop() types.JobBatch {
 		head := q.head.Load()
 		tail := q.tail.Load()
 
-		if head%q.size == tail%q.size {
+		if head == tail {
 			return nil
 		}
 
-		if !q.head.CompareAndSwap(head, head+1) {
-			continue
+		if q.head.CompareAndSwap(head, head+1) {
+			idx := head % q.size
+			val := q.buffer[idx].Load()
+			if val != nil {
+				return val.(types.JobBatch)
+			}
+			return nil
 		}
-
-		idx := head % q.size
-		jobVal := q.buffer[idx].Load()
-
-		if jobVal != nil {
-			return jobVal.(types.JobBatch)
-		}
-		return nil
 	}
 }
 
@@ -168,81 +163,93 @@ func (wp *WorkerPool) worker(ctx context.Context) {
 	localCompleted := uint64(0)
 
 	for {
-		// Проверка принудительного завершения
+		// Простая проверка в начале
 		if wp.quit.Load() {
-			return
-		}
-
-		// Сначала пробуем получить задачу без блокировки
-		job := wp.queue.TryPop()
-		if job == nil {
-			// Если нет задач — ждём с учётом контекста
-			job = wp.queue.WaitPop(ctx)
-			if job == nil {
-				// WaitPop вернул nil только если контекст отменён или quit=true
-				if wp.quit.Load() {
+			// Простой drain без retry
+			for {
+				job := wp.queue.TryPop()
+				if job == nil {
 					return
 				}
-				// Контекст отменён, но quit=false — всё равно завершаем
-				return
+				start := time.Now()
+				_ = job.ExecuteBatch()
+				localCompleted++
+
+				if localCompleted%100 == 0 {
+					duration := time.Since(start)
+					select {
+					case wp.metricsChan <- func() {
+						wp.metrics.IncrementCompletedJobs()
+						wp.metrics.RecordProcessingTime(duration)
+					}:
+					default:
+					}
+					localCompleted = 0
+				}
 			}
 		}
 
-		// Выполняем задачу
+		job := wp.queue.TryPop()
+		if job == nil {
+			job = wp.queue.WaitPop(ctx)
+			if job == nil {
+				continue
+			}
+		}
+
 		start := time.Now()
 		_ = job.ExecuteBatch()
 		localCompleted++
 
-		// Отправляем метрики каждые 100 задач
 		if localCompleted%100 == 0 {
 			duration := time.Since(start)
-			wp.metricsChan <- func() {
+			select {
+			case wp.metricsChan <- func() {
 				wp.metrics.IncrementCompletedJobs()
 				wp.metrics.RecordProcessingTime(duration)
+			}:
+			default:
 			}
 			localCompleted = 0
 		}
-		// Цикл продолжится: на следующей итерации снова попробуем TryPop,
-		// что позволит обработать все накопившиеся задачи без лишних пробуждений
 	}
 }
 
 // Submit отправляет задачу в очередь
 func (wp *WorkerPool) Submit(job types.JobBatch) bool {
 	if job == nil {
+		select {
+		case wp.metricsChan <- func() {
+			wp.metrics.IncrementRejectedJobs()
+		}:
+		default:
+		}
+		return false
+	}
+
+	if !wp.queue.TryPush(job) {
 		wp.metricsChan <- func() {
 			wp.metrics.IncrementRejectedJobs()
 		}
 		return false
 	}
 
-	if wp.quit.Load() {
-		wp.metricsChan <- func() {
-			wp.metrics.IncrementRejectedJobs()
-		}
-		return false
+	select {
+	case wp.metricsChan <- func() {
+		head := wp.queue.head.Load()
+		tail := wp.queue.tail.Load()
+		wp.metrics.SetQueuedJobs(tail - head)
+	}:
+	default:
 	}
-
-	if wp.queue.TryPush(job) {
-		wp.metricsChan <- func() {
-			head := wp.queue.head.Load()
-			tail := wp.queue.tail.Load()
-			wp.metrics.SetQueuedJobs(tail - head)
-		}
-		return true
-	}
-
-	wp.metricsChan <- func() {
-		wp.metrics.IncrementRejectedJobs()
-	}
-	return false
+	return true
 }
 
 // Stop останавливает пул воркеров
 func (wp *WorkerPool) Stop() {
 	wp.quit.Store(true)
-	time.Sleep(100 * time.Millisecond)
 	wp.wg.Wait()
+	time.Sleep(5 * time.Millisecond)
 	close(wp.metricsChan)
 }
 
@@ -262,7 +269,17 @@ func (wp *WorkerPool) metricsWorker(ctx context.Context) {
 			}
 			f()
 		case <-ctx.Done():
-			return
+			for {
+				select {
+				case f, ok := <-wp.metricsChan:
+					if !ok {
+						return
+					}
+					f()
+				default:
+					return
+				}
+			}
 		}
 	}
 }

@@ -24,22 +24,23 @@ func TestLockFreeQueue_Basic(t *testing.T) {
 }
 
 func TestLockFreeQueue_Full(t *testing.T) {
-	q := NewLockFreeQueue(2)
+	q := NewLockFreeQueue(2) // Capacity = 2 элемента
 
 	job1 := &mockJob{}
 	job2 := &mockJob{}
 	job3 := &mockJob{}
 
 	assert.True(t, q.TryPush(job1), "первая задача должна поместиться")
-	assert.False(t, q.TryPush(job2), "вторая задача уже не должна поместиться (ring buffer 1 = 2)")
+	assert.True(t, q.TryPush(job2), "вторая задача должна поместиться") // ✅ Изменено на True
+	assert.False(t, q.TryPush(job3), "третья задача не должна поместиться (очередь полна)")
 
 	assert.Equal(t, job1, q.TryPop(), "должна быть извлечена первая задача")
 
-	assert.True(t, q.TryPush(job2), "очередь пуста, теперь можно поместить вторую задачу")
-	assert.False(t, q.TryPush(job3), "очередь снова заполнена")
+	assert.True(t, q.TryPush(job3), "теперь можно поместить третью задачу")
 
-	assert.Equal(t, job2, q.TryPop())
-	assert.Nil(t, q.TryPop())
+	assert.Equal(t, job2, q.TryPop(), "должна быть извлечена вторая задача")
+	assert.Equal(t, job3, q.TryPop(), "должна быть извлечена третья задача")
+	assert.Nil(t, q.TryPop(), "очередь пуста")
 }
 
 func TestLockFreeQueue_WaitPop_Cancel(t *testing.T) {
