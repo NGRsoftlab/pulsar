@@ -15,10 +15,9 @@ import (
 	"github.com/NGRsoftlab/pulsar/internal/pipeline/factory"
 )
 
-// Версионная информация (заполняется при сборке)
 var (
-	version   = "dev"     // Версия приложения
-	buildTime = "unknown" // Время сборки
+	Version   = "dev"
+	BuildTime = "unknown"
 )
 
 func main() {
@@ -30,7 +29,7 @@ func main() {
 
 func run() error {
 	// Парсим CLI флаги
-	parser := cli.NewParser(version, buildTime)
+	parser := cli.NewParser(Version, BuildTime)
 	flags, err := parser.Parse(os.Args[1:])
 	if err != nil {
 		return fmt.Errorf("failde to parse CLI flags: %v", err)
