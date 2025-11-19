@@ -24,7 +24,7 @@ func withEnv(t *testing.T, key, value string, fn func()) {
 }
 
 func TestLoadConfig_EnvSlice_ValidDestinations(t *testing.T) {
-	withEnv(t, "UEBA_DESTINATIONS", "127.0.0.1:1000,example.com:2000", func() {
+	withEnv(t, "PULSAR_DESTINATIONS", "127.0.0.1:1000,example.com:2000", func() {
 		cfg, err := LoadConfig("", nil)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1:1000", "example.com:2000"}, cfg.Sender.Destinations)
@@ -32,7 +32,7 @@ func TestLoadConfig_EnvSlice_ValidDestinations(t *testing.T) {
 }
 
 func TestLoadConfig_ValidateFails_InvalidEventTypes(t *testing.T) {
-	withEnv(t, "UEBA_EVENT_TYPES", "login,file_access", func() {
+	withEnv(t, "PULSAR_EVENT_TYPES", "login,file_access", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unsupported event type")
@@ -47,7 +47,7 @@ func TestLoadConfig_ValidateFails_NegativeRate(t *testing.T) {
 }
 
 func TestLoadConfig_ValidateFails_BufferSizeZero(t *testing.T) {
-	withEnv(t, "UEBA_BUFFER_SIZE", "0", func() {
+	withEnv(t, "PULSAR_BUFFER_SIZE", "0", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "buffer_size must be positive")
@@ -55,7 +55,7 @@ func TestLoadConfig_ValidateFails_BufferSizeZero(t *testing.T) {
 }
 
 func TestLoadConfig_EnvInvalidBool(t *testing.T) {
-	withEnv(t, "UEBA_PACKET_MODE", "not-bool", func() {
+	withEnv(t, "PULSAR_PACKET_MODE", "not-bool", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid boolean format")
@@ -63,7 +63,7 @@ func TestLoadConfig_EnvInvalidBool(t *testing.T) {
 }
 
 func TestLoadConfig_EnvInvalidInt(t *testing.T) {
-	withEnv(t, "UEBA_EVENTS_PER_SEC", "not-a-number", func() {
+	withEnv(t, "PULSAR_EVENTS_PER_SEC", "not-a-number", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid integer format")
@@ -71,7 +71,7 @@ func TestLoadConfig_EnvInvalidInt(t *testing.T) {
 }
 
 func TestLoadConfig_EnvInvalidDuration(t *testing.T) {
-	withEnv(t, "UEBA_DURATION", "forever", func() {
+	withEnv(t, "PULSAR_DURATION", "forever", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid duration format")
@@ -93,7 +93,7 @@ func TestLoadConfig_EnvUnsupportedFieldType(t *testing.T) {
 }
 
 func TestLoadConfig_ValidateFails_RateTooHigh(t *testing.T) {
-	withEnv(t, "UEBA_EVENTS_PER_SEC", "300000", func() {
+	withEnv(t, "PULSAR_EVENTS_PER_SEC", "300000", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "events_per_second too high")
@@ -130,7 +130,7 @@ func TestPipelineConfig_Validate_ZeroBufferSize(t *testing.T) {
 }
 
 func TestLoadConfig_ValidateFails_InvalidTimeout(t *testing.T) {
-	withEnv(t, "UEBA_TIMEOUT", "0s", func() {
+	withEnv(t, "PULSAR_TIMEOUT", "0s", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "timeout must be positive")
@@ -138,7 +138,7 @@ func TestLoadConfig_ValidateFails_InvalidTimeout(t *testing.T) {
 }
 
 func TestLoadConfig_ValidateFails_InvalidBufferSize(t *testing.T) {
-	withEnv(t, "UEBA_BUFFER_SIZE", "-10", func() {
+	withEnv(t, "PULSAR_BUFFER_SIZE", "-10", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "buffer_size must be positive")
@@ -146,7 +146,7 @@ func TestLoadConfig_ValidateFails_InvalidBufferSize(t *testing.T) {
 }
 
 func TestConfigService_Load_Success(t *testing.T) {
-	withEnv(t, "UEBA_PROTOCOL", "udp", func() {
+	withEnv(t, "PULSAR_PROTOCOL", "udp", func() {
 		flags := &Flags{Rate: 500}
 		service := NewService("testdata/valid.yaml", flags)
 
@@ -170,7 +170,7 @@ func TestConfigService_Load_FileNotFound(t *testing.T) {
 }
 
 func TestConfigService_Load_ValidationFails(t *testing.T) {
-	withEnv(t, "UEBA_PROTOCOL", "http", func() { // недопустимый протокол
+	withEnv(t, "PULSAR_PROTOCOL", "http", func() { // недопустимый протокол
 		service := NewService("", nil)
 		err := service.Load()
 		require.Error(t, err)
@@ -197,7 +197,7 @@ func TestConfigService_GetConfig_AfterLoad(t *testing.T) {
 }
 
 func TestConfigService_EmptyFile_UsesDefaultsAndEnv(t *testing.T) {
-	withEnv(t, "UEBA_EVENTS_PER_SEC", "777", func() {
+	withEnv(t, "PULSAR_EVENTS_PER_SEC", "777", func() {
 		service := NewService("testdata/empty.yaml", nil)
 		err := service.Load()
 		require.NoError(t, err)
@@ -234,8 +234,8 @@ func TestLoadConfig_FileNotFound(t *testing.T) {
 }
 
 func TestLoadConfig_FromEnv_Overrides(t *testing.T) {
-	withEnv(t, "UEBA_EVENTS_PER_SEC", "2000", func() {
-		withEnv(t, "UEBA_PROTOCOL", "udp", func() {
+	withEnv(t, "PULSAR_EVENTS_PER_SEC", "2000", func() {
+		withEnv(t, "PULSAR_PROTOCOL", "udp", func() {
 			cfg, err := LoadConfig("", nil)
 			require.NoError(t, err)
 			require.Equal(t, 2000, cfg.Generator.EventsPerSecond)
@@ -245,7 +245,7 @@ func TestLoadConfig_FromEnv_Overrides(t *testing.T) {
 }
 
 func TestLoadConfig_EnvTimeDuration(t *testing.T) {
-	withEnv(t, "UEBA_DURATION", "10s", func() {
+	withEnv(t, "PULSAR_DURATION", "10s", func() {
 		cfg, err := LoadConfig("", nil)
 		require.NoError(t, err)
 		require.Equal(t, 10*time.Second, cfg.Generator.Duration)
@@ -253,7 +253,7 @@ func TestLoadConfig_EnvTimeDuration(t *testing.T) {
 }
 
 func TestLoadConfig_EnvSlice(t *testing.T) {
-	withEnv(t, "UEBA_DESTINATIONS", "127.0.0.1:1000,127.0.0.1:2000,example.com:3000", func() {
+	withEnv(t, "PULSAR_DESTINATIONS", "127.0.0.1:1000,127.0.0.1:2000,example.com:3000", func() {
 		cfg, err := LoadConfig("", nil)
 		require.NoError(t, err)
 		require.Equal(t, []string{"127.0.0.1:1000", "127.0.0.1:2000", "example.com:3000"}, cfg.Sender.Destinations)
@@ -264,7 +264,7 @@ func TestLoadConfig_Priority_FlagsEnvFile(t *testing.T) {
 	// Файл задаёт protocol: tcp
 	// Env пытается задать udp
 	// Флаг должен переопределить на tcp
-	withEnv(t, "UEBA_PROTOCOL", "udp", func() {
+	withEnv(t, "PULSAR_PROTOCOL", "udp", func() {
 		flags := &Flags{Protocol: "tcp"}
 		cfg, err := LoadConfig("testdata/valid.yaml", flags)
 		require.NoError(t, err)
@@ -273,7 +273,7 @@ func TestLoadConfig_Priority_FlagsEnvFile(t *testing.T) {
 }
 
 func TestLoadConfig_ValidateFails_InvalidProtocol(t *testing.T) {
-	withEnv(t, "UEBA_PROTOCOL", "http", func() {
+	withEnv(t, "PULSAR_PROTOCOL", "http", func() {
 		_, err := LoadConfig("", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "validation failed")

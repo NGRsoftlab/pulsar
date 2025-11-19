@@ -42,22 +42,22 @@ func NewParser(version, buildTime string) *Parser {
 	fs.StringVar(&flags.ConfigFile, "config", "", "Path to configuration file")
 	fs.StringVar(&flags.ConfigFile, "c", "", "Config file (shorthand)")
 
-	fs.IntVar(&flags.Rate, "rate", 0, "Events per second (overrides config)")
-	fs.IntVar(&flags.Rate, "r", 0, "Rate (shorthand)")
+	fs.IntVar(&flags.Rate, "rate", 10, "Events per second (overrides config)")
+	fs.IntVar(&flags.Rate, "r", 10, "Rate (shorthand)")
 
-	fs.StringVar(&flags.Destinations, "destinations", "", "Destinations: host:port,host:port")
-	fs.StringVar(&flags.Destinations, "d", "", "Destinations (shorthand)")
+	fs.StringVar(&flags.Destinations, "destinations", "127.0.0.1:514", "Destinations: host:port,host:port")
+	fs.StringVar(&flags.Destinations, "d", "127.0.0.1:514", "Destinations (shorthand)")
 
-	fs.StringVar(&flags.Protocol, "protocol", "", "Protocol: tcp or udp")
-	fs.StringVar(&flags.Protocol, "p", "", "Protocol (shorthand)")
+	fs.StringVar(&flags.Protocol, "protocol", "udp", "Protocol: tcp or udp")
+	fs.StringVar(&flags.Protocol, "p", "udp", "Protocol (shorthand)")
 
-	fs.StringVar(&flags.EventsType, "events", "", "EventsType: netflow or syslog")
-	fs.StringVar(&flags.EventsType, "e", "", "EventsType (shorthand)")
+	fs.StringVar(&flags.EventsType, "events", "netflow", "Events type: netflow or syslog")
+	fs.StringVar(&flags.EventsType, "e", "netflow", "Events type (shorthand)")
 
-	fs.StringVar(&flags.LogLevel, "log-level", "", "Log level: debug, info, warn, error")
-	fs.StringVar(&flags.LogLevel, "l", "", "Log level (shorthand)")
+	fs.StringVar(&flags.LogLevel, "log-level", "info", "Log level: debug, info, warn, error")
+	fs.StringVar(&flags.LogLevel, "l", "info", "Log level (shorthand)")
 
-	fs.DurationVar(&flags.Duration, "duration", 0, "How long to run (e.g., 30s, 5m, 1h)")
+	fs.DurationVar(&flags.Duration, "duration", 0, "How long to run (e.g., 30s, 5m, 1h); 0 = endless")
 	fs.DurationVar(&flags.Duration, "t", 0, "Duration (shorthand)")
 
 	return &Parser{
@@ -81,16 +81,16 @@ func (p *Parser) Parse(args []string) (*Flags, error) {
 
 // ShowVersionInfo выводит информацию о версии.
 func (p *Parser) ShowVersionInfo() {
-	fmt.Printf("UEBA Event Generator\n")
+	fmt.Printf("Pulsar\n")
 	fmt.Printf("Version: %s\n", p.version)
 	fmt.Printf("Build Time: %s\n", p.buildTime)
 }
 
 // ShowHelpInfo выводит справку по использованию.
 func (p *Parser) ShowHelpInfo() {
-	fmt.Printf("UEBA Event Generator - Generate synthetic security events\n\n")
+	fmt.Printf("Pulsar - Generate synthetic events\n\n")
 	fmt.Printf("USAGE:\n")
-	fmt.Printf("  ueba-generator [FLAGS]\n\n")
+	fmt.Printf(" pulsar [FLAGS]\n\n")
 	fmt.Printf("FLAGS:\n")
 	fmt.Printf("  -c, --config FILE         Configuration file path\n")
 	fmt.Printf("  -r, --rate N              Events per second\n")
@@ -102,7 +102,7 @@ func (p *Parser) ShowHelpInfo() {
 	fmt.Printf("  -v, --version             Show version information\n")
 	fmt.Printf("  -h, --help                Show this help\n\n")
 	fmt.Printf("EXAMPLES:\n")
-	fmt.Printf("  ueba-generator -c config.yaml\n")
-	fmt.Printf("  ueba-generator -r 100 -d 127.0.0.1:514\n")
-	fmt.Printf("  ueba-generator -r 50 -p tcp -d 10.0.1.100:514\n")
+	fmt.Printf("  pulsar -c config.yaml\n")
+	fmt.Printf("  pulsar -r 100 -d 127.0.0.1:514\n")
+	fmt.Printf("  pulsar -r 50 -p tcp -d 10.0.1.100:514\n")
 }

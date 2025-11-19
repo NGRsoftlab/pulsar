@@ -13,26 +13,26 @@ type Config struct {
 }
 
 type GeneratorConfig struct {
-	EventsPerSecond   int           `yaml:"events_per_second" json:"events_per_second" env:"UEBA_EVENTS_PER_SEC"`
-	EventTypes        []string      `yaml:"event_types" json:"event_types" env:"UEBA_EVENT_TYPES"`
-	Duration          time.Duration `yaml:"duration" json:"duration" env:"UEBA_DURATION"`
-	SerializationMode string        `yaml:"serialization_mode" json:"serialization_mode" env:"UEBA_SERIALIZATION_MODE"`
-	PacketMode        bool          `yaml:"packet_mode" json:"packet_mode" env:"UEBA_PACKET_MODE"`
+	EventsPerSecond   int           `yaml:"events_per_second" json:"events_per_second" env:"PULSAR_EVENTS_PER_SEC"`
+	EventTypes        []string      `yaml:"event_types" json:"event_types" env:"PULSAR_EVENT_TYPES"`
+	Duration          time.Duration `yaml:"duration" json:"duration" env:"PULSAR_DURATION"`
+	SerializationMode string        `yaml:"serialization_mode" json:"serialization_mode" env:"PULSAR_SERIALIZATION_MODE"`
+	PacketMode        bool          `yaml:"packet_mode" json:"packet_mode" env:"PULSAR_PACKET_MODE"`
 }
 
 type SenderConfig struct {
-	Protocol     string        `yaml:"protocol" json:"protocol" env:"UEBA_PROTOCOL"`
-	Destinations []string      `yaml:"destinations" json:"destinations" env:"UEBA_DESTINATIONS"`
-	Retries      int           `yaml:"retries" json:"retries" env:"UEBA_RETRIES"`
-	Timeout      time.Duration `yaml:"timeout" json:"timeout" env:"UEBA_TIMEOUT"`
+	Protocol     string        `yaml:"protocol" json:"protocol" env:"PULSAR_PROTOCOL"`
+	Destinations []string      `yaml:"destinations" json:"destinations" env:"PULSAR_DESTINATIONS"`
+	Retries      int           `yaml:"retries" json:"retries" env:"PULSAR_RETRIES"`
+	Timeout      time.Duration `yaml:"timeout" json:"timeout" env:"PULSAR_TIMEOUT"`
 }
 
 type PipelineConfig struct {
-	BufferSize int `yaml:"buffer_size" json:"buffer_size" env:"UEBA_BUFFER_SIZE"`
+	BufferSize int `yaml:"buffer_size" json:"buffer_size" env:"PULSAR_BUFFER_SIZE"`
 }
 
 type LoggingConfig struct {
-	Level  string `yaml:"level" json:"level" env:"UEBA_LOG_LEVEL"`
-	Format string `yaml:"format" json:"format" env:"UEBA_LOG_FORMAT"`
-	File   string `yaml:"file" json:"file" env:"UEBA_LOG_FILE"`
+	Level  string `yaml:"level" json:"level" env:"PULSAR_LOG_LEVEL"`
+	Format string `yaml:"format" json:"format" env:"PULSAR_LOG_FORMAT"`
+	File   string `yaml:"file" json:"file" env:"PULSAR_LOG_FILE"`
 }

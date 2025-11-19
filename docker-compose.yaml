@@ -14,6 +14,7 @@ services:
       - -p=udp 
       - -e=netflow
       - -d=${TARGET_DESTINATION:-localhost:2055}
+    network_mode: host
 
   pulsar-syslog:
     <<: *common-config
@@ -24,3 +25,4 @@ services:
       - -p=tcp
       - -e=syslog
       - -d=${TARGET_DESTINATION:-localhost:514}
+    network_mode: host
