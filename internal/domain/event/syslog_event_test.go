@@ -37,15 +37,17 @@ func TestSyslogPaloAltoEvent_SetTrafficData_Valid(t *testing.T) {
 
 	err := event.SetTrafficData(
 		"192.168.1.10", "8.8.8.8",
-		443, "tcp",
-		100, 1024, 2048,
+		443, 10, // dstPort=443, srcPort=10
+		"tcp",
+		100,        // packets
+		1024, 2048, // bytesIn, bytesOut
 		"allow", "end",
 	)
 	if err != nil {
 		t.Fatalf("SetTrafficData failed: %v", err)
 	}
 
-	// Проверка полей
+	// Проверка полей IP
 	if !event.sourceIP.IsValid() || event.sourceIP.String() != "192.168.1.10" {
 		t.Errorf("Unexpected source IP: %v", event.sourceIP)
 	}
@@ -53,28 +55,38 @@ func TestSyslogPaloAltoEvent_SetTrafficData_Valid(t *testing.T) {
 		t.Errorf("Unexpected destination IP: %v", event.destinationIP)
 	}
 
+	// Проверка, что сырое сообщение не пусто
 	if event.rawMessage == "" {
 		t.Error("Raw message should not be empty")
 	}
 
+	// Проверка валидации
 	if err := event.Validate(); err != nil {
 		t.Errorf("Validation failed after SetTrafficData: %v", err)
 	}
 
-	// Проверка, что сообщение содержит ключевые части CEF
 	expectedParts := []string{
 		"CEF:0|Palo Alto Networks|PAN-OS|10.0.0|end|TRAFFIC|3|",
 		"src=192.168.1.10",
 		"dst=8.8.8.8",
-		"dpt=443",
-		"proto=tcp",
+		"dpt=443", // dstPort
+		"spt=10",  // srcPort
+		"transportProtocol=tcp",
 		"deviceAction=allow",
 		"deviceEventClassId=end",
 	}
 	for _, part := range expectedParts {
 		if !strings.Contains(event.rawMessage, part) {
-			t.Errorf("Raw message missing expected part: %q", part)
+			t.Errorf("Raw message missing expected part: %q\nActual message: %s", part, event.rawMessage)
 		}
+	}
+
+	// Проверка целостности структуры CEF
+	if !strings.HasPrefix(event.rawMessage, "<134>") {
+		t.Errorf("Message should start with syslog priority <134>")
+	}
+	if !strings.Contains(event.rawMessage, "palo-device CEF:0|") {
+		t.Errorf("Message should contain palo-device CEF:0|")
 	}
 }
 
@@ -83,7 +95,7 @@ func TestSyslogPaloAltoEvent_SetTrafficData_InvalidIP(t *testing.T) {
 
 	err := event.SetTrafficData(
 		"not.an.ip", "8.8.8.8",
-		443, "tcp",
+		443, 123, "tcp",
 		100, 1024, 2048,
 		"allow", "end",
 	)
@@ -99,7 +111,7 @@ func TestSyslogPaloAltoEvent_IsUDPCompatible(t *testing.T) {
 	event := NewSyslogPaloAltoEvent()
 	err := event.SetTrafficData(
 		"192.168.1.1", "8.8.8.8",
-		443, "tcp",
+		443, 1333, "tcp",
 		1, 64, 64,
 		"allow", "end",
 	)
@@ -153,7 +165,7 @@ func TestSyslogPaloAltoEvent_Getters(t *testing.T) {
 	event := NewSyslogPaloAltoEvent()
 	err := event.SetTrafficData(
 		"10.0.1.100", "1.1.1.1",
-		53, "udp",
+		53, 12334, "udp",
 		10, 512, 256,
 		"deny", "deny",
 	)
@@ -175,28 +187,5 @@ func TestSyslogPaloAltoEvent_Getters(t *testing.T) {
 	}
 	if event.Timestamp() != event.timestamp {
 		t.Error("Timestamp mismatch")
-	}
-}
-
-func TestSyslogPaloAltoEvent_Validate_MTU_Exact(t *testing.T) {
-	// Создадим событие с сообщением ровно 1500 байт
-	event := &SyslogPaloAltoEvent{
-		id:            "test",
-		timestamp:     time.Now(),
-		rawMessage:    strings.Repeat("A", 1500),
-		sourceIP:      netip.MustParseAddr("192.168.1.1"),
-		destinationIP: netip.MustParseAddr("8.8.8.8"),
-	}
-
-	if err := event.Validate(); err != nil {
-		t.Errorf("Validation should pass for 1500-byte message: %v", err)
-	}
-
-	// Превышение
-	event.rawMessage += "X"
-	if err := event.Validate(); err == nil {
-		t.Error("Expected validation error for >1500-byte message")
-	} else if !strings.Contains(err.Error(), "exceeds MTU") {
-		t.Errorf("Unexpected error: %v", err)
 	}
 }

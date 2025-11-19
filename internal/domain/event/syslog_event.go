@@ -91,7 +91,7 @@ func (e *SyslogPaloAltoEvent) IsUDPCompatible() bool {
 // SetTrafficData устанавливает параметры трафика и генерирует cef-сообщение
 func (e *SyslogPaloAltoEvent) SetTrafficData(
 	srcIP, dstIP string,
-	dstPort uint16,
+	dstPort, srcPort uint16, // ← добавлен srcPort
 	proto string,
 	packets uint32,
 	bytesIn, bytesOut uint64,
@@ -113,15 +113,25 @@ func (e *SyslogPaloAltoEvent) SetTrafficData(
 
 	totalBytes := bytesIn + bytesOut
 
-	// ВАЖНО: добавляем deviceEventClassId и deviceAction явно
+	// Генерируем дополнительные временные метки (можно сделать одинаковыми или разными)
+	startTime := now.Add(-time.Duration(packets) * time.Millisecond)
+	endTime := now
+	deviceReceiptTime := now
+
+	// Генерируем уникальный eventID (можно использовать timestamp + rand)
+	eventID := fmt.Sprintf("%d", now.UnixNano())
+
 	extension := fmt.Sprintf(
 		"rt=%s "+
 			"deviceExternalId=007057000057896 "+
-			"deviceEventClassId=%s "+ // <-- добавлено
+			"externalId=%s "+ // ← внешний ID события
+			"eventId=%s "+ // ← ID события
+			"deviceEventClassId=%s "+
+			"deviceEventCategory=%s "+ // ← явно указываем категорию
 			"src=%s dst=%s "+
-			"spt=0 dpt=%d "+
-			"proto=%s "+
-			"deviceAction=%s "+ // <-- добавлено
+			"spt=%d dpt=%d "+ // ← srcPort теперь не 0
+			"transportProtocol=%s "+ // ← вместо proto, но можно и оставить proto, если парсер знает
+			"deviceAction=%s "+
 			"app=web-browsing "+
 			"cs1Label=Rule cs1=allow-all "+
 			"cs4Label=FromZone cs4=trust "+
@@ -132,17 +142,26 @@ func (e *SyslogPaloAltoEvent) SetTrafficData(
 			"cnt=%d "+
 			"in=%d out=%d "+
 			"cn3Label=Packets cn3=%d "+
-			"cs6Label=LogProfile cs6=default",
+			"cs6Label=LogProfile cs6=default "+
+			"startTime=%d "+
+			"endTime=%d "+
+			"deviceReceiptTime=%d",
 		cefTime,
-		subtype, // deviceEventClassId = subtype (end/start/drop/deny)
+		eventID, // externalId
+		eventID, // eventId
+		subtype, // deviceEventClassId
+		subtype, // deviceEventCategory (может быть уточнён)
 		srcIP, dstIP,
-		dstPort,
-		proto,
-		action, // deviceAction = action (allow/drop/deny)
+		srcPort, dstPort, // ← теперь оба порта
+		proto, // или можно использовать proto напрямую
+		action,
 		now.Unix(),
 		totalBytes,
 		bytesIn, bytesOut,
 		packets,
+		startTime.Unix(),         // startTime
+		endTime.Unix(),           // endTime
+		deviceReceiptTime.Unix(), // deviceReceiptTime
 	)
 
 	e.rawMessage = fmt.Sprintf(
@@ -175,6 +194,7 @@ func (e *SyslogPaloAltoEvent) GenerateRandomTrafficData() error {
 
 	tcpPorts := []uint16{80, 443, 22, 21, 25, 53, 993, 995, 8080, 8443}
 	udpPorts := []uint16{53, 123, 161, 514, 1194, 4500}
+	srcPort := uint16(1024 + rand.Intn(64511))
 
 	proto := protocols[rand.Intn(len(protocols))]
 	srcIP := srcIPs[rand.Intn(len(srcIPs))]
@@ -206,7 +226,7 @@ func (e *SyslogPaloAltoEvent) GenerateRandomTrafficData() error {
 
 	// Модифицируйте SetTrafficData, чтобы принимать action и subtype
 	return e.SetTrafficData(
-		srcIP, dstIP, dstPort, proto,
+		srcIP, dstIP, dstPort, srcPort, proto,
 		packets, bytesIn, bytesOut,
 		selected.action, selected.subtype,
 	)

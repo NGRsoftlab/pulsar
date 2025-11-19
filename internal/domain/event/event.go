@@ -1,3 +1,4 @@
+// Package event - интефейс события, типы событий, временные реализации типов событий
 package event
 
 import (
@@ -80,7 +81,7 @@ func (f *Factory) CreateEvent(eventType Type) (Event, error) {
 	}
 }
 
-// ParseType парсит строку в Type
+// ParseEventType парсит строку в Type
 func (f *Factory) ParseEventType(s string) (Type, error) {
 	switch s {
 	case "netflow":
