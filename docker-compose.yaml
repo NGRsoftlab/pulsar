@@ -1,0 +1,26 @@
+common-config: &common-config
+  build: .
+  env_file:
+    - .env
+  restart: unless_stopped
+
+services:
+  pulsar-netflow:
+    <<: *common-config
+    container_name: pulsar-netflow
+    command:
+      - -r=1000 
+      - -t=5m 
+      - -p=udp 
+      - -e=netflow
+      - -d=${TARGET_DESTINATION:-localhost:2055}
+
+  pulsar-syslog:
+    <<: *common-config
+    container_name: pulsar-syslog
+    command:
+      - -r=1000 
+      - -t=5m 
+      - -p=tcp
+      - -e=syslog
+      - -d=${TARGET_DESTINATION:-localhost:514}

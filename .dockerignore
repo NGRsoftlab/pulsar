@@ -1,0 +1,14 @@
+.git
+.gitignore
+.vscode
+.idea
+*.swp
+.DS_Store
+vendor/
+dist/
+build/
+*.md
+.env
+Dockerfile*
+docker-compose*.yml
+.dockerignore
