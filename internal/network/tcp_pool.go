@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/NGRsoftlab/pulsar/internal/metrics"
 )
 
 type TCPConnection struct {
@@ -91,8 +89,6 @@ func (pool *TCPConnectionPool) createConnection(id int) (*TCPConnection, error) 
 		}
 	}
 
-	metrics.GetGlobalMetrics().IncrementConnections()
-
 	return &TCPConnection{
 		conn:      conn,
 		id:        id,
@@ -138,8 +134,6 @@ func (conn *TCPConnection) MarkUnhealthy() {
 		conn.isHealthy = false
 		if conn.conn != nil {
 			conn.conn.Close()
-			metrics.GetGlobalMetrics().DecrementConnections()
-			metrics.GetGlobalMetrics().IncrementReconnects()
 		}
 		log.Printf("TCP connection %d marked as unhealthy", conn.id)
 	}

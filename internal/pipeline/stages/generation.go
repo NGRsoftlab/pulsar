@@ -9,6 +9,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/NGRsoftlab/pulsar/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/metrics"
 )
 
 // EventGenerationJobBatch - пакет событий для WorkerPool
@@ -40,13 +41,13 @@ func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 			if netflowEvt, ok := evt.(*event.NetflowEvent); ok {
 				data, err := netflowEvt.ToBinaryNetFlow()
 				if err != nil {
-					jb.stage.metrics.IncrementFailed()
+					metrics.FailedEvents.Inc()
 					continue
 				}
 				serializedData = NewSerializedData(data, evt.Type(), evt.GetID(), jb.stage.serializationMode)
 			} else {
 				// Binary mode не поддерживается для syslog — пропускаем или ошибку?
-				jb.stage.metrics.IncrementFailed()
+				metrics.FailedEvents.Inc()
 				continue
 			}
 		} else {
@@ -54,14 +55,14 @@ func (jb *EventGenerationJobBatch) ExecuteBatch() error {
 			serializedData, err = NewSerializedDataFromEvent(evt, jb.stage.serializationMode)
 			if err != nil {
 				log.Printf("Serialization failed for event %s: %v", evt.GetID(), err)
-				jb.stage.metrics.IncrementFailed()
+				metrics.FailedEvents.Inc()
 				continue
 			}
 		}
 
 		select {
 		case jb.out <- serializedData:
-			jb.stage.metrics.IncrementGenerated()
+			metrics.GeneratedEvents.Inc()
 		case <-context.Background().Done():
 			return context.Canceled
 		}
@@ -79,7 +80,6 @@ type EventGenerationStage struct {
 	serializationMode SerializationMode
 	packetMode        bool
 	workerPool        Pool
-	metrics           MetricsCollector
 }
 
 // NewEventGenerationStage создаёт стадию генерации
@@ -89,7 +89,6 @@ func NewEventGenerationStage(
 	serializationMode SerializationMode,
 	packetMode bool,
 	workerPool Pool,
-	metrics MetricsCollector,
 ) *EventGenerationStage {
 	return &EventGenerationStage{
 		eventType:         eventType,
@@ -97,7 +96,6 @@ func NewEventGenerationStage(
 		serializationMode: serializationMode,
 		packetMode:        packetMode,
 		workerPool:        workerPool,
-		metrics:           metrics,
 	}
 }
 
@@ -195,16 +193,4 @@ func (g *EventGenerationStage) generateEvent() (event.Event, error) {
 	default:
 		return nil, fmt.Errorf("unsupported event type: %v", g.eventType)
 	}
-}
-
-// Конфигурационные методы
-
-func (g *EventGenerationStage) GetGeneratedCount() uint64 {
-	generated, _, _, _ := g.metrics.GetStats()
-	return generated
-}
-
-func (g *EventGenerationStage) GetFailedCount() uint64 {
-	_, _, failed, _ := g.metrics.GetStats()
-	return failed
 }

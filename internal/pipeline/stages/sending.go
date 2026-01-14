@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/NGRsoftlab/pulsar/internal/domain/event"
+	"github.com/NGRsoftlab/pulsar/internal/metrics"
 )
 
 type Sender interface {
@@ -34,12 +35,10 @@ type NetworkSendingStage struct {
 
 	sender     Sender
 	workerPool Pool
-	metrics    MetricsCollector
 	input      chan event.Event
 }
 
 func NewNetworkSendingStage(
-	metrics MetricsCollector,
 	workerPool Pool,
 	sender Sender,
 ) *NetworkSendingStage {
@@ -49,7 +48,6 @@ func NewNetworkSendingStage(
 		timeout:      5 * time.Second,
 		sender:       sender,
 		workerPool:   workerPool,
-		metrics:      metrics,
 		input:        make(chan event.Event, 1000),
 	}
 }
@@ -121,7 +119,7 @@ func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData
 
 			if len(currentBatch.data) >= batchSize {
 				if !s.workerPool.Submit(currentBatch) {
-					s.metrics.IncrementDropped()
+					metrics.DroppedEvents.Inc()
 				}
 				currentBatch = nil
 				if timer != nil {
@@ -134,7 +132,7 @@ func (s *NetworkSendingStage) Run(ctx context.Context, in <-chan *SerializedData
 		case <-timerC:
 			if currentBatch != nil && len(currentBatch.data) > 0 {
 				if !s.workerPool.Submit(currentBatch) {
-					s.metrics.IncrementDropped()
+					metrics.DroppedEvents.Inc()
 				}
 				currentBatch = nil
 			}
@@ -158,11 +156,11 @@ func (s *NetworkSendingStage) SendData(data *SerializedData) error {
 
 	err := s.sender.Send(destination, data.Data)
 	if err != nil {
-		s.metrics.IncrementFailed()
+		metrics.FailedEvents.Inc()
 		return err
 	}
 
-	s.metrics.IncrementSent()
+	metrics.SentEvents.Inc()
 	return nil
 }
 
@@ -202,61 +200,9 @@ func (s *NetworkSendingStage) RecreateUnhealthyConnections() int {
 	return 0
 }
 
-func (s *NetworkSendingStage) GetSentCount() uint64 {
-	_, sent, _, _ := s.metrics.GetStats()
-	return sent
-}
-
-func (s *NetworkSendingStage) GetFailedCount() uint64 {
-	_, _, failed, _ := s.metrics.GetStats()
-	return failed
-}
-
-func (s *NetworkSendingStage) GetStageStats() map[string]any {
-	_, sent, failed, dropped := s.metrics.GetStats()
-
-	stats := map[string]any{
-		"protocol":            s.protocol,
-		"destinations":        len(s.destinations),
-		"events_sent":         sent,
-		"events_failed":       failed,
-		"events_dropped":      dropped,
-		"worker_pool_healthy": s.workerPool != nil,
-	}
-
-	return stats
-}
-
 func (s *NetworkSendingStage) IsHealthy() (bool, string) {
 	if s.workerPool == nil {
 		return false, "worker pool not initialized"
 	}
 	return s.sender.IsHealthy()
-}
-
-func (s *NetworkSendingStage) GetOptimizationRecommendations() []string {
-	var recommendations []string
-	_, dropped, failed, sent := s.metrics.GetStats()
-
-	if dropped > 0 {
-		dropRate := float64(dropped) / (float64(sent) + float64(failed) + float64(dropped)) * 100.0
-		if dropRate > 1.0 {
-			recommendations = append(recommendations,
-				fmt.Sprintf("High drop rate (%.1f%%) - consider increasing worker pool queue size", dropRate))
-		}
-	}
-
-	if failed > 0 {
-		failRate := float64(failed)/float64(sent) + float64(failed)*100
-		if failRate > 5.0 {
-			recommendations = append(recommendations,
-				fmt.Sprintf("High failure rate (%.1f%%) - check network connectivity", failRate))
-		}
-	}
-
-	if len(recommendations) == 0 {
-		recommendations = append(recommendations, "Stage operating optimally - no recommendations")
-	}
-
-	return recommendations
 }

@@ -17,21 +17,15 @@ type pipeline interface {
 	Stop() error
 }
 
-type monitor interface {
-	Start(ctx context.Context)
-	Stop() error
-}
-
 type Manager struct {
 	pipeline pipeline
-	monitor  monitor
 	logger   logger.Logger
 	cancel   context.CancelFunc
 	mu       sync.Mutex
 }
 
-func NewManager(p pipeline, m monitor, log logger.Logger) *Manager {
-	return &Manager{pipeline: p, monitor: m, logger: log}
+func NewManager(p pipeline, log logger.Logger) *Manager {
+	return &Manager{pipeline: p, logger: log}
 }
 
 func (m *Manager) Run(duration time.Duration) error {
@@ -48,8 +42,6 @@ func (m *Manager) Run(duration time.Duration) error {
 	}
 
 	errCh := make(chan error, 1)
-
-	go m.monitor.Start(ctx)
 
 	m.logger.Info("Starting pipeline...")
 
@@ -72,14 +64,6 @@ func (m *Manager) Run(duration time.Duration) error {
 	m.logger.Info("Stopping pipeline...")
 	if err := m.pipeline.Stop(); err != nil {
 		m.logger.Error("Error stopping pipeline: %v", err)
-		if runErr == nil {
-			runErr = err
-		}
-	}
-
-	m.logger.Info("Stopping monitor...")
-	if err := m.monitor.Stop(); err != nil {
-		m.logger.Error("Error stopping monitor: %v", err)
 		if runErr == nil {
 			runErr = err
 		}

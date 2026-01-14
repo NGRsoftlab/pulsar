@@ -23,4 +23,6 @@ COPY --from=builder /build/pulsar /app/pulsar
 LABEL maintainer="nik.shabanov2018@yandex.com"
 LABEL description="Pulsar: CLI tool for high EPS event generation"
 
+EXPOSE 9090
+
 ENTRYPOINT ["/app/pulsar"]

@@ -43,7 +43,7 @@ func BenchmarkLockFreeQueue_Concurrent(b *testing.B) {
 // ===== WORKERPOOL =====
 
 func BenchmarkWorkerPool_Submit(b *testing.B) {
-	wp := NewWorkerPool(8, 1024, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(8, 1024, func() types.JobBatch { return &mockJob{} })
 	ctx, cancel := context.WithCancel(context.Background())
 	wp.Start(ctx)
 	defer func() {
@@ -60,7 +60,7 @@ func BenchmarkWorkerPool_Submit(b *testing.B) {
 }
 
 func BenchmarkWorkerPool_Throughput(b *testing.B) {
-	wp := NewWorkerPool(8, 1024, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(8, 1024, func() types.JobBatch { return &mockJob{} })
 	ctx, cancel := context.WithCancel(context.Background())
 	wp.Start(ctx)
 	defer func() {
@@ -85,7 +85,7 @@ func BenchmarkWorkerPool_Throughput(b *testing.B) {
 }
 
 func BenchmarkWorkerPool_HighContention(b *testing.B) {
-	wp := NewWorkerPool(2, 256, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(2, 256, func() types.JobBatch { return &mockJob{} })
 	ctx, cancel := context.WithCancel(context.Background())
 	wp.Start(ctx)
 	defer func() {

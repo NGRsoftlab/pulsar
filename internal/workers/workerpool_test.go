@@ -12,24 +12,15 @@ import (
 	"github.com/NGRsoftlab/pulsar/internal/types"
 )
 
-type mockWorkerMetrics struct{}
-
-func (m *mockWorkerMetrics) IncrementActiveWorkers()                     {}
-func (m *mockWorkerMetrics) DecrementActiveWorkers()                     {}
-func (m *mockWorkerMetrics) IncrementCompletedJobs()                     {}
-func (m *mockWorkerMetrics) IncrementRejectedJobs()                      {}
-func (m *mockWorkerMetrics) SetQueuedJobs(count uint64)                  {}
-func (m *mockWorkerMetrics) RecordProcessingTime(duration time.Duration) {}
-
 func TestWorkerPool_SubmitNil(t *testing.T) {
-	wp := NewWorkerPool(1, 1, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(1, 1, func() types.JobBatch { return &mockJob{} })
 
 	success := wp.Submit(nil)
 	assert.False(t, success, "ожидалось false при отправке nil")
 }
 
 func TestWorkerPool_Submit_ValidJob(t *testing.T) {
-	wp := NewWorkerPool(1, 2, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(1, 2, func() types.JobBatch { return &mockJob{} })
 
 	job := &mockJob{}
 	success := wp.Submit(job)
@@ -47,7 +38,7 @@ func TestWorkerPool_GetJob_CallFactory(t *testing.T) {
 	wp := NewWorkerPool(1, 1, func() types.JobBatch {
 		called = true
 		return exceptedJob
-	}, &mockWorkerMetrics{})
+	})
 
 	job := wp.GetJob()
 
@@ -66,7 +57,7 @@ func (c countingJob) ExecuteBatch() error {
 
 func TestWorkerPool_Integration_SingleJob(t *testing.T) {
 	var wg sync.WaitGroup
-	wp := NewWorkerPool(1, 2, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(1, 2, func() types.JobBatch { return &mockJob{} })
 
 	wg.Add(1)
 	job := countingJob{
@@ -102,7 +93,7 @@ func TestWorkerPool_Integration_MultitipleJobs(t *testing.T) {
 	var completed int
 	var mu sync.Mutex
 
-	wp := NewWorkerPool(1, 10, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(1, 10, func() types.JobBatch { return &mockJob{} })
 
 	jobs := make([]*countingJob, jobCount)
 	for i := range jobs {
@@ -136,7 +127,7 @@ func TestWorkerPool_ContextCancel_StopsAcceptingNewWork(t *testing.T) {
 	var mu sync.Mutex
 	var completed int
 
-	wp := NewWorkerPool(2, 10, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(2, 10, func() types.JobBatch { return &mockJob{} })
 
 	longJob := &countingJob{
 		fn: func() {
@@ -171,7 +162,7 @@ func TestWorkerPool_Integration_Concurrency(t *testing.T) {
 	var completed int64
 	var accepted int64
 
-	wp := NewWorkerPool(workerCount, queueSize, func() types.JobBatch { return &mockJob{} }, &mockWorkerMetrics{})
+	wp := NewWorkerPool(workerCount, queueSize, func() types.JobBatch { return &mockJob{} })
 
 	ctx, cancel := context.WithCancel(context.Background())
 

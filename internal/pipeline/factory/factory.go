@@ -18,12 +18,11 @@ import (
 )
 
 type PipelineFactory struct {
-	cfg     *config.Config
-	metrics stages.MetricsCollector
+	cfg *config.Config
 }
 
-func NewPipelineFactory(cfg *config.Config, metrics stages.MetricsCollector) *PipelineFactory {
-	return &PipelineFactory{cfg: cfg, metrics: metrics}
+func NewPipelineFactory(cfg *config.Config) *PipelineFactory {
+	return &PipelineFactory{cfg: cfg}
 }
 
 func (f *PipelineFactory) calculateBufferSize() int {
@@ -87,7 +86,7 @@ func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 	queueSize := max(f.cfg.Generator.EventsPerSecond*2, 1000)
 	workerPool := workers.NewWorkerPool(0, queueSize, func() types.JobBatch {
 		return stages.NewEventGenerationJobBatch(50)
-	}, f.metrics.(workers.WorkerMetrics))
+	})
 	workerPool.SetPoolType("generation")
 
 	// 4. Создаём этап с ЧИСТЫМ ИНТЕРФЕЙСОМ
@@ -97,7 +96,6 @@ func (f *PipelineFactory) createGenerationStage() (coordinator.Stage, error) {
 		serializationMode,
 		packetMode,
 		workerPool,
-		f.metrics,
 	), nil
 }
 
@@ -131,19 +129,16 @@ func (f *PipelineFactory) createSendingStage() (coordinator.Stage, error) {
 		return nil, fmt.Errorf("failed to create sender: %w", err)
 	}
 
-	wm := f.metrics.(workers.WorkerMetrics)
-
 	workerPool := workers.NewWorkerPool(
 		0,
 		5000,
 		func() types.JobBatch {
 			return stages.NewNetworkSendJobBatch(50)
 		},
-		wm,
 	)
 	workerPool.SetPoolType("network")
 
-	sendStage := stages.NewNetworkSendingStage(f.metrics, workerPool, sender)
+	sendStage := stages.NewNetworkSendingStage(workerPool, sender)
 
 	if err := sendStage.SetDestinations(f.cfg.Sender.Destinations); err != nil {
 		return nil, fmt.Errorf("failed to set destinations: %w", err)

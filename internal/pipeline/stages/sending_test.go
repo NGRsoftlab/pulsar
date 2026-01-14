@@ -132,11 +132,10 @@ func newTestSerializedData(dest string, data []byte) *SerializedData {
 // ================
 
 func TestNewNetworkSendingStage(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	wp := newMockWorkerPoolForNetwork()
 	sender := newMockSender()
 
-	stage := NewNetworkSendingStage(metrics, wp, sender)
+	stage := NewNetworkSendingStage(wp, sender)
 
 	assert.NotNil(t, stage)
 	assert.Equal(t, []string{"127.0.0.1:514"}, stage.destinations)
@@ -154,11 +153,9 @@ func TestNetworkSendJobBatch_ExecuteBatch_Nil(t *testing.T) {
 
 func TestNetworkSendJobBatch_ExecuteBatch(t *testing.T) {
 	sender := newMockSender()
-	metrics := &mockMetricsCollector{}
 	stage := &NetworkSendingStage{
 		destinations: []string{"127.0.0.1:9999"},
 		sender:       sender,
-		metrics:      metrics,
 		protocol:     "udp",
 	}
 
@@ -178,22 +175,14 @@ func TestNetworkSendJobBatch_ExecuteBatch(t *testing.T) {
 	assert.Len(t, sent, 2)
 	assert.Equal(t, "127.0.0.1:9999", sent[0].destination) // из destinations
 	assert.Equal(t, "192.0.2.1:1234", sent[1].destination) // из data.Destination
-
-	generated, dropped, failed, sentCount := metrics.GetStats()
-	assert.Equal(t, uint64(0), generated)
-	assert.Equal(t, uint64(0), dropped)
-	assert.Equal(t, uint64(0), failed)
-	assert.Equal(t, float64(2), sentCount)
 }
 
 func TestNetworkSendJobBatch_ExecuteBatch_SendFailure(t *testing.T) {
 	sender := newMockSender()
 	sender.SetFailSend(true)
-	metrics := &mockMetricsCollector{}
 	stage := &NetworkSendingStage{
 		destinations: []string{"127.0.0.1:9999"},
 		sender:       sender,
-		metrics:      metrics,
 		protocol:     "udp",
 	}
 
@@ -206,18 +195,13 @@ func TestNetworkSendJobBatch_ExecuteBatch_SendFailure(t *testing.T) {
 
 	err := batch.ExecuteBatch()
 	require.NoError(t, err) // ошибка отправки не прерывает batch
-
-	_, _, failed, sent := metrics.GetStats()
-	assert.Equal(t, uint64(1), failed)
-	assert.Equal(t, float64(0), sent)
 }
 
 func TestNetworkSendingStage_Run(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	wp := newMockWorkerPoolForNetwork()
 	sender := newMockSender()
 
-	stage := NewNetworkSendingStage(metrics, wp, sender)
+	stage := NewNetworkSendingStage(wp, sender)
 	stage.SetDestinations([]string{"127.0.0.1:1234"})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -256,19 +240,13 @@ func TestNetworkSendingStage_Run(t *testing.T) {
 	sent := sender.GetSent()
 	assert.Len(t, sent, 2)
 	assert.Equal(t, "127.0.0.1:1234", sent[0].destination)
-
-	_, dropped, failed, sentCount := metrics.GetStats()
-	assert.Equal(t, uint64(0), dropped)
-	assert.Equal(t, uint64(0), failed)
-	assert.Equal(t, float64(2), sentCount)
 }
 
 func TestNetworkSendingStage_Run_CancelWithPendingBatch(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	wp := newMockWorkerPoolForNetwork()
 	sender := newMockSender()
 
-	stage := NewNetworkSendingStage(metrics, wp, sender)
+	stage := NewNetworkSendingStage(wp, sender)
 	stage.SetDestinations([]string{"127.0.0.1:1234"})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -304,15 +282,10 @@ func TestNetworkSendingStage_Run_CancelWithPendingBatch(t *testing.T) {
 
 	sent := sender.GetSent()
 	assert.Len(t, sent, 3)
-
-	_, dropped, failed, sentCount := metrics.GetStats()
-	assert.Equal(t, uint64(0), dropped)
-	assert.Equal(t, uint64(0), failed)
-	assert.Equal(t, float64(3), sentCount)
 }
 
 func TestNetworkSendingStage_SetDestinations(t *testing.T) {
-	stage := NewNetworkSendingStage(&mockMetricsCollector{}, newMockWorkerPoolForNetwork(), newMockSender())
+	stage := NewNetworkSendingStage(newMockWorkerPoolForNetwork(), newMockSender())
 
 	err := stage.SetDestinations([]string{"192.168.1.1:514", "10.0.0.1:514"})
 	require.NoError(t, err)
@@ -326,7 +299,7 @@ func TestNetworkSendingStage_SetDestinations(t *testing.T) {
 }
 
 func TestNetworkSendingStage_SetProtocol(t *testing.T) {
-	stage := NewNetworkSendingStage(&mockMetricsCollector{}, newMockWorkerPoolForNetwork(), newMockSender())
+	stage := NewNetworkSendingStage(newMockWorkerPoolForNetwork(), newMockSender())
 
 	err := stage.SetProtocol("tcp")
 	require.NoError(t, err)
@@ -341,7 +314,7 @@ func TestNetworkSendingStage_SetProtocol(t *testing.T) {
 }
 
 func TestNetworkSendingStage_ResizeConnectionPool(t *testing.T) {
-	stage := NewNetworkSendingStage(&mockMetricsCollector{}, newMockWorkerPoolForNetwork(), newMockSender())
+	stage := NewNetworkSendingStage(newMockWorkerPoolForNetwork(), newMockSender())
 
 	err := stage.ResizeConnectionPool(10)
 	assert.Error(t, err)
@@ -352,23 +325,9 @@ func TestNetworkSendingStage_ResizeConnectionPool(t *testing.T) {
 	assert.NotContains(t, err.Error(), "only supported for TCP")
 }
 
-func TestNetworkSendingStage_GetStageStats(t *testing.T) {
-	metrics := &mockMetricsCollector{}
-	sender := newMockSender()
-	stage := NewNetworkSendingStage(metrics, newMockWorkerPoolForNetwork(), sender)
-
-	stats := stage.GetStageStats()
-	expectedKeys := []string{"protocol", "destinations", "events_sent", "events_failed", "events_dropped", "worker_pool_healthy"}
-	for _, key := range expectedKeys {
-		assert.Contains(t, stats, key)
-	}
-	assert.Equal(t, "udp", stats["protocol"])
-	assert.Equal(t, 1, stats["destinations"])
-}
-
 func TestNetworkSendingStage_IsHealthy(t *testing.T) {
 	sender := newMockSender()
-	stage := NewNetworkSendingStage(&mockMetricsCollector{}, newMockWorkerPoolForNetwork(), sender)
+	stage := NewNetworkSendingStage(newMockWorkerPoolForNetwork(), sender)
 
 	healthy, msg := stage.IsHealthy()
 	assert.True(t, healthy)
@@ -378,45 +337,4 @@ func TestNetworkSendingStage_IsHealthy(t *testing.T) {
 	healthy, msg = stage.IsHealthy()
 	assert.False(t, healthy)
 	assert.Equal(t, "mock unhealthy", msg)
-}
-
-func TestNetworkSendingStage_GetOptimizationRecommendations(t *testing.T) {
-	t.Run("Optimal", func(t *testing.T) {
-		metrics := &mockMetricsCollector{}
-		sender := newMockSender()
-		stage := NewNetworkSendingStage(metrics, newMockWorkerPoolForNetwork(), sender)
-
-		recommendations := stage.GetOptimizationRecommendations()
-		assert.Contains(t, recommendations[0], "operating optimally")
-	})
-
-	t.Run("HighDropRate", func(t *testing.T) {
-		metrics := &mockMetricsCollector{}
-		sender := newMockSender()
-		stage := NewNetworkSendingStage(metrics, newMockWorkerPoolForNetwork(), sender)
-
-		metrics.IncrementSent()
-		metrics.IncrementSent()
-		metrics.IncrementDropped()
-		metrics.IncrementDropped()
-		metrics.IncrementDropped()
-
-		recommendations := stage.GetOptimizationRecommendations()
-		assert.Contains(t, recommendations[0], "High drop rate")
-	})
-
-	t.Run("HighFailureRate", func(t *testing.T) {
-		metrics := &mockMetricsCollector{}
-		sender := newMockSender()
-		stage := NewNetworkSendingStage(metrics, newMockWorkerPoolForNetwork(), sender)
-
-		metrics.IncrementSent()
-		metrics.IncrementSent()
-		metrics.IncrementSent()
-		metrics.IncrementFailed()
-		metrics.IncrementFailed()
-
-		recommendations := stage.GetOptimizationRecommendations()
-		assert.Contains(t, recommendations[0], "High failure rate")
-	})
 }
