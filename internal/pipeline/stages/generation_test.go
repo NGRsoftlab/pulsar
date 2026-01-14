@@ -60,23 +60,6 @@ func (wp *mockWorkerPool) GetJob() types.JobBatch {
 	return job
 }
 
-// mockMetricsCollector собирает метрики для проверки в тестах
-type mockMetricsCollector struct {
-	mu                         sync.Mutex
-	generated, failed, dropped uint64
-	sent                       float64
-}
-
-func (m *mockMetricsCollector) IncrementGenerated() { m.mu.Lock(); m.generated++; m.mu.Unlock() }
-func (m *mockMetricsCollector) IncrementFailed()    { m.mu.Lock(); m.failed++; m.mu.Unlock() }
-func (m *mockMetricsCollector) IncrementDropped()   { m.mu.Lock(); m.dropped++; m.mu.Unlock() }
-func (m *mockMetricsCollector) IncrementSent()      { m.mu.Lock(); m.sent++; m.mu.Unlock() }
-func (m *mockMetricsCollector) GetStats() (uint64, uint64, uint64, float64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.generated, m.dropped, m.failed, m.sent
-}
-
 // Тест создания нового батча
 func TestNewEventGenerationJobBatch(t *testing.T) {
 	batch := NewEventGenerationJobBatch(10)
@@ -96,11 +79,9 @@ func TestEventGenerationJobBatch_ExecuteBatch_Nil(t *testing.T) {
 
 // Тест ExecuteBatch с событием NetflowEvent
 func TestEventGenerationJobBatch_ExecuteBatch_Netflow(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	stage := &EventGenerationStage{
 		serializationMode: SerializationModeBinary,
 		packetMode:        false,
-		metrics:           metrics,
 	}
 
 	out := make(chan *SerializedData, 10)
@@ -124,10 +105,6 @@ func TestEventGenerationJobBatch_ExecuteBatch_Netflow(t *testing.T) {
 	default:
 		assert.Fail(t, "expected serialized data in output channel")
 	}
-
-	generated, _, failed, _ := metrics.GetStats()
-	assert.Equal(t, uint64(1), generated)
-	assert.Equal(t, uint64(0), failed)
 }
 
 // fakeEvent — минимальная реализация event.Event для тестов
@@ -165,12 +142,10 @@ func (f *fakeEvent) GetDestinationIP() netip.Addr {
 
 // Тест генерации NetflowEvent
 func TestEventGenerationStage_generateEvent(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	stage := &EventGenerationStage{
 		eventType:         event.EventTypeNetflow,
 		serializationMode: SerializationModeBinary,
 		packetMode:        false,
-		metrics:           metrics,
 	}
 
 	evt, err := stage.generateEvent()
@@ -181,7 +156,6 @@ func TestEventGenerationStage_generateEvent(t *testing.T) {
 
 // Тест Run с ограничением скорости и обработкой через mock pool
 func TestEventGenerationStage_Run(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	wp := newMockWorkerPool()
 	defer wp.Stop()
 
@@ -191,7 +165,6 @@ func TestEventGenerationStage_Run(t *testing.T) {
 		SerializationModeBinary,
 		true, // packetMode
 		wp,
-		metrics,
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
@@ -232,15 +205,11 @@ func TestEventGenerationStage_Run(t *testing.T) {
 	close(out)
 	received = <-receivedCh
 
-	generated, _, failed, _ := metrics.GetStats()
-	assert.GreaterOrEqual(t, generated, uint64(1))
-	assert.Equal(t, uint64(0), failed)
 	assert.GreaterOrEqual(t, received, 1)
 }
 
 // Тест остановки по контексту и отправки оставшегося батча
 func TestEventGenerationStage_Run_CancelWithPendingBatch(t *testing.T) {
-	metrics := &mockMetricsCollector{}
 	wp := newMockWorkerPool()
 	defer wp.Stop()
 
@@ -250,7 +219,6 @@ func TestEventGenerationStage_Run_CancelWithPendingBatch(t *testing.T) {
 		SerializationModeBinary,
 		true, // packetMode = true → использует ToBinaryNetFlow()
 		wp,
-		metrics,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -286,8 +254,4 @@ func TestEventGenerationStage_Run_CancelWithPendingBatch(t *testing.T) {
 	// Закрываем out, чтобы завершить consumer
 	close(out)
 	<-done
-
-	generated, _, failed, _ := metrics.GetStats()
-	assert.GreaterOrEqual(t, generated, uint64(1))
-	assert.Equal(t, uint64(0), failed)
 }

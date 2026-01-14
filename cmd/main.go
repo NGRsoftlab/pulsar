@@ -2,23 +2,19 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/NGRsoftlab/pulsar/internal/cli"
 	"github.com/NGRsoftlab/pulsar/internal/config"
 	"github.com/NGRsoftlab/pulsar/internal/lifecycle"
 	"github.com/NGRsoftlab/pulsar/internal/logger"
-	"github.com/NGRsoftlab/pulsar/internal/metrics"
-	"github.com/NGRsoftlab/pulsar/internal/monitoring"
 	"github.com/NGRsoftlab/pulsar/internal/pipeline/factory"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-)
+var Version = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -29,7 +25,7 @@ func main() {
 
 func run() error {
 	// Парсим CLI флаги
-	parser := cli.NewParser(Version, BuildTime)
+	parser := cli.NewParser(Version)
 	flags, err := parser.Parse(os.Args[1:])
 	if err != nil {
 		return fmt.Errorf("failde to parse CLI flags: %v", err)
@@ -59,18 +55,23 @@ func run() error {
 	fmt.Println("Configuration loaded successfully!")
 	fmt.Println("Next step: create pipeline...")
 
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		err := http.ListenAndServe(":9090", nil)
+		if err != nil && err != http.ErrServerClosed {
+			log.Error("Metrics server failed: %v", err)
+		}
+	}()
+
 	// Создаем pipeline
-	factory := factory.NewPipelineFactory(cfg, metrics.GetGlobalMetrics())
+	factory := factory.NewPipelineFactory(cfg)
 	pipeline, err := factory.CreatePipeline()
 	if err != nil {
 		return fmt.Errorf("failed to build pipeline: %v", err)
 	}
 
-	// Создаем monitoring
-	monitoring := monitoring.NewMonitor(10*time.Second, log)
-
 	// Создаем и запускаем приложение
-	manager := lifecycle.NewManager(pipeline, monitoring, log)
+	manager := lifecycle.NewManager(pipeline, log)
 
 	if err := manager.Run(cfg.Generator.Duration); err != nil {
 		return fmt.Errorf("application failed: %v", err)

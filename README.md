@@ -13,7 +13,7 @@ Generate realistic logs and network flows at scale up to **150000 events per sec
 - **Lock-free pipeline engine**: Zero-lock worker pools with atomic queues for sustained 150K+ EPS
 - **CLI-first**: Optionla config files - everything tunable via flags or env vars. 
 Perfect for scripts and CI
-- **Built-in observability**: Metrics for throughput, drops, and latency out of the box
+- **Built-in observability**: Prometheus metrics for events, workers, queue depth and Go runtime. Exposed on `:9090/metrics`  
 
 
 ## Known problems
@@ -21,9 +21,8 @@ Perfect for scripts and CI
 - TCP connection pool is basic (no smart retries; errors on shutdown)
 - Event types and data are hardcoded - no support for custom format 
 - Potential data loss on shutdown under high load (visible with -race flag)
-- Incomplete metrics (network/processing stats not fully implemented) 
 - Suboptimal memory usage at high EPS (OOM risk on constrained systems) 
-- No build-time information (`-v` shows placeholder)
+
 
 ## Usage
 ### Run from source (for development)
@@ -50,9 +49,8 @@ go build -o pulsar .
 | `-v, --version` | - | Show version information | - |
 | `-h, --help` | - | Show this help | - |
 
-### Docker
-> ⚠️**Wrk in progress** docker-compose is just an exampl and not optimal. Public image and stable version coming soon.
 
+### Docker
 You can run multiple generators via `docker-compose.yml` (netflow + syslog, as example)
 
 Build and run both generators for 5 minutes:

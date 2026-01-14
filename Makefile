@@ -11,10 +11,9 @@ ifeq ($(OS),Windows_NT)
 endif
 BINARY_PATH=./cmd
 VERSION ?= $(shell git describe --tags --always --dirty="-dev")
-BUILD_TIME ?= $(shell date /t)
 
 build:
-	$(GOBUILD) -ldflags="-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)" -o $(BINARY_NAME) $(BINARY_PATH)
+	$(GOBUILD) -ldflags="-X main.Version=$(VERSION)" -o $(BINARY_NAME) $(BINARY_PATH)
 
 # Run tests all tests from root dir
 test-all:

@@ -110,7 +110,7 @@ func TestParser_Parse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := NewParser("test-version", "test-build-time")
+			parser := NewParser("test-version")
 			parser.flagSet.SetOutput(new(bytes.Buffer))
 
 			flags, err := parser.Parse(tt.args)
@@ -133,11 +133,11 @@ func TestParser_Parse(t *testing.T) {
 
 // Smoke-тесты для функций вывода (они не должны паниковать)
 func TestParser_ShowVersionInfo(t *testing.T) {
-	parser := NewParser("1.0.0", "2025-01-01T00:00:00Z")
+	parser := NewParser("1.0.0")
 	parser.ShowVersionInfo()
 }
 
 func TestParser_ShowHelpInfo(t *testing.T) {
-	parser := NewParser("1.0.0", "2025-01-01T00:00:00Z")
+	parser := NewParser("1.0.0")
 	parser.ShowHelpInfo()
 }

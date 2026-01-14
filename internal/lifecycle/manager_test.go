@@ -119,10 +119,9 @@ func (m *mockMonitorWithError) WasStopped() bool {
 
 func TestManager_Run_Success(t *testing.T) {
 	p := &mockPipeline{}
-	m := &mockMonitor{}
 	log := logger.NewStdLogger()
 
-	manager := NewManager(p, m, log)
+	manager := NewManager(p, log)
 
 	// Запускаем на 10 мс — этого достаточно для graceful shutdown
 	err := manager.Run(10 * time.Millisecond)
@@ -139,21 +138,14 @@ func TestManager_Run_Success(t *testing.T) {
 	if !p.WasStopped() {
 		t.Error("pipeline.Stop was not called")
 	}
-	if !m.WasStarted() {
-		t.Error("monitor.Start was not called")
-	}
-	if !m.WasStopped() {
-		t.Error("monitor.Stop was not called")
-	}
 }
 
 func TestManager_Run_PipelineError(t *testing.T) {
 	expectedErr := errors.New("pipeline failed")
 	p := &mockPipeline{startErr: expectedErr}
-	m := &mockMonitor{}
 	log := logger.NewStdLogger()
 
-	manager := NewManager(p, m, log)
+	manager := NewManager(p, log)
 
 	err := manager.Run(0)
 	if err == nil || err.Error() != expectedErr.Error() {
@@ -163,17 +155,13 @@ func TestManager_Run_PipelineError(t *testing.T) {
 	if !p.WasStopped() {
 		t.Error("pipeline.Stop should be called even on error")
 	}
-	if !m.WasStopped() {
-		t.Error("monitor.Stop should be called even on error")
-	}
 }
 
 func TestManager_Run_DurationTimeout(t *testing.T) {
 	p := &mockPipeline{}
-	m := &mockMonitor{}
 	log := logger.NewStdLogger()
 
-	manager := NewManager(p, m, log)
+	manager := NewManager(p, log)
 
 	err := manager.Run(10 * time.Millisecond)
 	if err != nil {
@@ -188,17 +176,13 @@ func TestManager_Run_DurationTimeout(t *testing.T) {
 	if !p.WasStopped() {
 		t.Error("pipeline should have been stopped after timeout")
 	}
-	if !m.WasStopped() {
-		t.Error("monitor should have been stopped after timeout")
-	}
 }
 
 func TestManager_Stop_ExternalCancel(t *testing.T) {
 	p := &mockPipeline{}
-	m := &mockMonitor{}
 	log := logger.NewStdLogger()
 
-	manager := NewManager(p, m, log)
+	manager := NewManager(p, log)
 
 	var runErr error
 	done := make(chan struct{})
@@ -220,38 +204,18 @@ func TestManager_Stop_ExternalCancel(t *testing.T) {
 	if !p.WasStopped() {
 		t.Error("pipeline should be stopped after external Stop()")
 	}
-	if !m.WasStopped() {
-		t.Error("monitor should be stopped after external Stop()")
-	}
 }
 
 func TestManager_Run_PipelineStopErrorPriority(t *testing.T) {
 	pipelineStopErr := errors.New("pipeline stop failed")
-	monitorStopErr := errors.New("monitor stop failed")
 
 	p := &mockPipeline{stopErr: pipelineStopErr}
-	mon := &mockMonitorWithError{stopErr: monitorStopErr}
 	log := logger.NewStdLogger()
 
-	manager := NewManager(p, mon, log)
+	manager := NewManager(p, log)
 
 	err := manager.Run(50 * time.Millisecond)
 	if err == nil || err.Error() != pipelineStopErr.Error() {
 		t.Errorf("expected pipeline stop error, got %v", err)
-	}
-}
-
-func TestManager_Run_MonitorStopErrorWhenPipelineOK(t *testing.T) {
-	monitorStopErr := errors.New("monitor stop failed")
-
-	p := &mockPipeline{}
-	m := &mockMonitorWithError{stopErr: monitorStopErr}
-	log := logger.NewStdLogger()
-
-	manager := NewManager(p, m, log)
-
-	err := manager.Run(50 * time.Millisecond)
-	if err == nil || err.Error() != monitorStopErr.Error() {
-		t.Errorf("expected monitor stop error, got %v", err)
 	}
 }
