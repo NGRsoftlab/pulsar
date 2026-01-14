@@ -37,5 +37,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ env.TAG }}
+          tags: ghcr.io/ngrsoftlab/pulsar:${{ env.TAG }}
           platforms: linux/amd64,linux/arm64
