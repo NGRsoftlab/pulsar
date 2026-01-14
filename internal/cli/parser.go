@@ -22,14 +22,13 @@ type Flags struct {
 
 // Parser инкапсулирует логику парсинга CLI-аргументов.
 type Parser struct {
-	version   string
-	buildTime string
-	flagSet   *flag.FlagSet
-	flags     *Flags
+	version string
+	flagSet *flag.FlagSet
+	flags   *Flags
 }
 
 // NewParser создаёт новый парсер с заданной версией и временем сборки.
-func NewParser(version, buildTime string) *Parser {
+func NewParser(version string) *Parser {
 	fs := flag.NewFlagSet("event-generator", flag.ContinueOnError)
 	flags := &Flags{}
 
@@ -61,10 +60,9 @@ func NewParser(version, buildTime string) *Parser {
 	fs.DurationVar(&flags.Duration, "t", 0, "Duration (shorthand)")
 
 	return &Parser{
-		version:   version,
-		buildTime: buildTime,
-		flagSet:   fs,
-		flags:     flags,
+		version: version,
+		flagSet: fs,
+		flags:   flags,
 	}
 }
 
@@ -83,7 +81,6 @@ func (p *Parser) Parse(args []string) (*Flags, error) {
 func (p *Parser) ShowVersionInfo() {
 	fmt.Printf("Pulsar\n")
 	fmt.Printf("Version: %s\n", p.version)
-	fmt.Printf("Build Time: %s\n", p.buildTime)
 }
 
 // ShowHelpInfo выводит справку по использованию.

@@ -14,10 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
-)
+var Version = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -28,7 +25,7 @@ func main() {
 
 func run() error {
 	// Парсим CLI флаги
-	parser := cli.NewParser(Version, BuildTime)
+	parser := cli.NewParser(Version)
 	flags, err := parser.Parse(os.Args[1:])
 	if err != nil {
 		return fmt.Errorf("failde to parse CLI flags: %v", err)
